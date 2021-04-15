@@ -23,10 +23,8 @@
  * Back ported to the 8xx platform (from the 8260 platform) by
  * Murray.Jensen@cmst.csiro.au, 27-Jan-01.
  */
-#ifndef __DRIVER_STORAGE_SDHCI_H__
-#define __DRIVER_STORAGE_SDHCI_H__
-
-//#include <libpayload.h>
+#ifndef __SDHCI_SDHCI_H__
+#define __SDHCI_SDHCI_H__
 
 #include "mmc.h"
 
@@ -300,10 +298,9 @@ struct sdhci_host {
 	unsigned clock_f_min;
 	unsigned clock_f_max;
 	unsigned clock_base; /* controller base clock */
-	int removable;
 	unsigned voltages;
-    unsigned int        tuning_done;    /* Condition flag set when CMD19 succeeds */
-    uint32_t timing;
+	unsigned int        tuning_done;    /* Condition flag set when CMD19 succeeds */
+	uint32_t timing;
 
 	/*
 	 * Dynamically allocated array of ADMA descriptors to use for data
@@ -366,8 +363,6 @@ static inline SdhciHost *mmc_get_host(void)
     return &emmc_host;
 }
 
-
 void add_sdhci(SdhciHost *host);
-
 
 #endif

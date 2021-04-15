@@ -23,8 +23,8 @@
  * MA 02111-1307 USA
  */
 
-#ifndef __DRIVERS_STORAGE_BOUNCEBUF_H__
-#define __DRIVERS_STORAGE_BOUNCEBUF_H__
+#ifndef __SDHCI_BOUNCEBUF_H__
+#define __SDHCI_BOUNCEBUF_H__
 
 #include <stddef.h>
 
@@ -96,8 +96,6 @@ int bounce_buffer_stop(struct bounce_buffer *state);
 #define __ALIGN_MASK(x,mask)    (((x)+(mask))&~(mask))
 #define ALIGN_UP(x,a)           ALIGN((x),(a))
 #define ALIGN_DOWN(x,a)         ((x) & ~((typeof(x))(a)-1UL))
-//#define IS_ALIGNED(x,a)         (((x) & ((typeof(x))(a)-1UL)) == 0)
-
 
 #define DMA_MINALIGN (64)
 #define ROUND(a,b) (((a) + (b) - 1) & ~((b) - 1))
@@ -109,4 +107,4 @@ int bounce_buffer_stop(struct bounce_buffer *state);
 #define ARCH_DMA_MINALIGN (DMA_MINALIGN)
 #endif
 
-#endif // __DRIVERS_STORAGE_BOUNCEBUF_H__
+#endif

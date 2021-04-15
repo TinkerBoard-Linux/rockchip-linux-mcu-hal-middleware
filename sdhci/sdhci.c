@@ -24,10 +24,6 @@
  * Murray.Jensen@cmst.csiro.au, 27-Jan-01.
  */
 
-//#include <libpayload.h>
-
-#include "sdmmc_config.h"
-
 #include "blockdev.h"
 #include "sdhci.h"
 
@@ -37,7 +33,6 @@
 #define VENDOR_ENHANCED_STROBE		BIT(0)
 
 extern inline SdhciHost *mmc_get_host(void);
-extern int ConfigMMCPHY(uint32 clock);
 
 #define MAX_TUNING_LOOP 40
 #define SDHCI_MAX_NUM_DESCS     2048
@@ -371,7 +366,7 @@ static int sdhci_send_command(MmcCtrlr *mmc_ctrl, MmcCommand *cmd,
 
 	//mmc_error("cmd%d\n", cmd->cmdidx);
 	/* Wait max 1 s */
-	timeout = 1000;
+	timeout = 100000;
 
 	sdhci_writel(host, SDHCI_INT_ALL_MASK, SDHCI_INT_STATUS);
 	mask = SDHCI_CMD_INHIBIT;
@@ -393,7 +388,7 @@ static int sdhci_send_command(MmcCtrlr *mmc_ctrl, MmcCommand *cmd,
 		}
 
 		timeout--;
-		udelay(1000);
+		udelay(100);
 	}
 
 	mask = SDHCI_INT_RESPONSE;
@@ -463,7 +458,7 @@ static int sdhci_send_command(MmcCtrlr *mmc_ctrl, MmcCommand *cmd,
 	if (data && (host->host_caps & MMC_AUTO_CMD12))
 		return sdhci_complete_adma(host, cmd, data);
 
-	start = timer_us(0);
+	start = 0;
 
 	do {
 		stat = sdhci_readl(host, SDHCI_INT_STATUS);
@@ -473,7 +468,9 @@ static int sdhci_send_command(MmcCtrlr *mmc_ctrl, MmcCommand *cmd,
 
 		/* Apply max timeout for R1b-type CMD defined in eMMC ext_csd
 		   except for erase ones */
-		if (timer_us(start) > 2550000) {
+		udelay(100);
+		start += 100;
+		if (start > 2550000) {
 			if (host->quirks & SDHCI_QUIRK_BROKEN_R1B)
 				return 0;
 			else {
@@ -546,6 +543,68 @@ void sdhci_set_uhs_signaling(SdhciHost *host, unsigned int timing)
 
 }
 
+#define DWCMSHC_HOST_CTRL3	0x508
+#define EMMC_DLL_CTRL		0x800
+#define EMMC_DLL_RXCLK		0x804
+#define EMMC_DLL_TXCLK		0x808
+#define EMMC_DLL_STRBIN		0x80C
+#define EMMC_DLL_STATUS0	0x840
+#define EMMC_DLL_STATUS1	0x844
+
+int ConfigMMCPHY(SdhciHost *host, unsigned int clock)
+{
+	uint32_t status, tmp;
+	uint32_t ret, timeout;
+
+	PRINT_E("Enable PHY CLK: %d\n", clock);
+	sdhci_writel(host, 0, EMMC_DLL_RXCLK);
+	sdhci_writel(host, 0x0, DWCMSHC_HOST_CTRL3);
+	if (clock < MMC_CLOCK_200MHZ) {
+		sdhci_writel(host, 0, EMMC_DLL_TXCLK);
+		sdhci_writel(host, 0, EMMC_DLL_CTRL);
+		sdhci_writel(host, 0, EMMC_DLL_STRBIN);
+		return 0;
+	}
+
+	/*Reset DLL*/
+	sdhci_writel(host, 0x1 << 1, EMMC_DLL_CTRL);
+	udelay(2);
+	sdhci_writel(host, 0, EMMC_DLL_CTRL);
+	/*Init DLL*/
+	tmp = (5uL << 16) | (2 << 8) | 0x1;
+	sdhci_writel(host, tmp, EMMC_DLL_CTRL);
+
+	/* Wait max 10 ms */
+	timeout = 10000;
+	while (1) {
+		status = sdhci_readl(host, EMMC_DLL_STATUS0);
+		tmp = (status >> 8) & 0x3;
+
+		if (0x1 == tmp) {
+			ret = 0;
+			break;
+		} else if (0x2 == tmp) {
+			ret = -1;
+		}
+
+		if (timeout-- <= 0) {
+			ret = -2;
+		}
+
+		udelay(1);
+	}
+
+	if (ret < 0) {
+		PRINT_E("Emmc DLL Lock fail %d, 0x%x\n", ret, status);
+		return ret;
+	}
+
+	sdhci_writel(host, (1uL << 29) | (1uL << 27), EMMC_DLL_RXCLK);
+	sdhci_writel(host, (1uL << 27) | (1uL << 24) | 0x10, EMMC_DLL_TXCLK);
+	sdhci_writel(host, (1uL << 27) | (1uL << 24) | 0x8, EMMC_DLL_STRBIN);
+
+	return 0;
+}
 
 static int sdhci_set_clock(SdhciHost *host, unsigned int clock)
 {
@@ -627,7 +686,7 @@ static int sdhci_set_clock(SdhciHost *host, unsigned int clock)
 		udelay(1);
 	}
 
-	ConfigMMCPHY(clock);
+	ConfigMMCPHY(host, clock);
 
 	clk |= SDHCI_CLOCK_CARD_EN;
 	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
@@ -1013,63 +1072,18 @@ static int sdhci_init(SdhciHost *host)
 
 static int sdhci_update(BlockDevCtrlrOps *me)
 {
-	//SdhciHost *host = container_of
-	//	(me, SdhciHost, mmc_ctrlr.ctrlr.ops);
 	SdhciHost *host = mmc_get_host();
 
-	if (host->removable) {
-		int present = (sdhci_readl(host, SDHCI_PRESENT_STATE) &
-			       SDHCI_CARD_PRESENT) != 0;
+	if (!host->initialized && sdhci_init(host))
+		return -1;
 
-		if (!present) {
-			if (host->mmc_ctrlr.media) {
-				/*
-				 * A card was present but isn't any more. Get
-				 * rid of it.
-				 */
-				/*list_remove
-					(&host->mmc_ctrlr.media->dev.list_node);
-				free(host->mmc_ctrlr.media);*/
-				host->mmc_ctrlr.media = NULL;
-			}
+	host->initialized = 1;
 
-			return 0;
-		}
+	if (mmc_setup_media(&host->mmc_ctrlr))
+		return -1;
 
-		if (!host->mmc_ctrlr.media) {
-			/*
-			 * A card is present and not set up yet. Get it ready.
-			 */
-			if (sdhci_init(host))
-				return -1;
-
-			if (mmc_setup_media(&host->mmc_ctrlr))
-				return -1;
-
-			host->mmc_ctrlr.media->dev.name = "SDHCI card";
-			/*list_insert_after
-				(&host-> mmc_ctrlr.media->dev.list_node,
-				 &removable_block_devices);*/
-		}
-	} else {
-		if (!host->initialized && sdhci_init(host))
-			return -1;
-
-		host->initialized = 1;
-
-		if (mmc_setup_media(&host->mmc_ctrlr))
-			return -1;
-
-		host->mmc_ctrlr.media->dev.name = "SDHCI fixed";
-		/*list_insert_after(&host->mmc_ctrlr.media->dev.list_node,
-				  &fixed_block_devices);*/
-		host->mmc_ctrlr.ctrlr.need_update = 0;
-	}
-
-	host->mmc_ctrlr.media->dev.removable = host->removable;
-	//host->mmc_ctrlr.media->dev.ops.read = block_mmc_read;
-	//host->mmc_ctrlr.media->dev.ops.write = block_mmc_write;
-	//host->mmc_ctrlr.media->dev.ops.new_stream = new_simple_stream;
+	host->mmc_ctrlr.media->dev.name = "SDHCI fixed";
+	host->mmc_ctrlr.ctrlr.need_update = 0;
 
 	return 0;
 }

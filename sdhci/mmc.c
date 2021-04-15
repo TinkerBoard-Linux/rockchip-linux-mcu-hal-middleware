@@ -25,18 +25,16 @@
  * MA 02111-1307 USA
  */
 
-#include "sdmmc_config.h"
+#include "blockdev.h"
 #include "mmc.h"
 #include "sdhci.h"
-
-//#include "drivers/storage/mmc.h"
+#include "mmc_api.h"
 
 //#define CONFIG_ENHANCE_STROBE
 //#define CONFIG_MMC_H400
 #define CONFIG_MMC_H200
 #define CONFIG_MMC_CLK_MAX      200*1000*1000
-//#define CONFIG_MMC_CLK_24MHZ    
-
+//#define CONFIG_MMC_CLK_24MHZ
 
 /* Set block count limit because of 16 bit register limit on some hardware*/
 #ifndef CONFIG_SYS_MMC_MAX_BLK_COUNT
@@ -63,11 +61,10 @@ typedef __SIZE_TYPE__ ssize_t;
 #ifdef DRIVERS_SDHCI
 
 extern unsigned int SetEmmcClk(unsigned int clock);
-
 static inline uint32_t swap_bytes32(uint32_t in)
 {
 	return ((in & 0xFF) << 24) | ((in & 0xFF00) << 8) |
-	       ((in & 0xFF0000) >> 8) | ((in & 0xFF000000) >> 24);
+		((in & 0xFF0000) >> 8) | ((in & 0xFF000000) >> 24);
 }
 
 #define htobe32(in) swap_bytes32(in)
@@ -94,13 +91,15 @@ int mmc_busy_wait_io(volatile uint32_t *address, uint32_t *output,
 		     uint32_t io_mask, uint32_t timeout_ms)
 {
 	uint32_t value = (uint32_t) -1;
-	uint64_t start = timer_us(0);
+	uint64_t start = 0;
 
 	if (!output)
 		output = &value;
 
 	for (; *output & io_mask; *output = readl(address)) {
-		if (timer_us(start) > timeout_ms * 1000)
+		udelay(50);
+		start += 1;
+		if (start > timeout_ms * 20)
 			return -1;
 	}
 
@@ -111,13 +110,15 @@ int mmc_busy_wait_io_until(volatile uint32_t *address, uint32_t *output,
 			   uint32_t io_mask, uint32_t timeout_ms)
 {
 	uint32_t value = 0;
-	uint64_t start = timer_us(0);
+	uint64_t start = 0;
 
 	if (!output)
 		output = &value;
 
 	for (; !(*output & io_mask); *output = readl(address)) {
-		if (timer_us(start) > timeout_ms * 1000)
+		udelay(50);
+		start += 1;
+		if (start > timeout_ms * 20)
 			return -1;
 	}
 
@@ -361,9 +362,6 @@ static int mmc_read(MmcMedia *media, void *dest, uint32_t start,
 static int mmc_go_idle(MmcMedia *media)
 {
 	// Some cards can't accept idle commands without delay.
-	if (media->dev.removable)
-		mdelay(1);
-
 	MmcCommand cmd;
 	cmd.cmdidx = MMC_CMD_GO_IDLE_STATE;
 	cmd.cmdarg = 0;
@@ -375,14 +373,8 @@ static int mmc_go_idle(MmcMedia *media)
 	if (err)
 		return err;
 
-	// Some cards need more than half second to respond to next command (ex,
-	// SEND_OP_COND).
-	if (media->dev.removable)
-		mdelay(2);
-
 	return 0;
 }
-
 
 /* We pass in the cmd since otherwise the init seems to fail */
 static int mmc_send_op_cond_iter(MmcMedia *media, MmcCommand *cmd, int use_arg)
@@ -448,9 +440,7 @@ static int mmc_complete_op_cond(MmcMedia *media)
 	MmcCommand cmd;
 
 	int timeout = MMC_INIT_TIMEOUT_US;
-	uint64_t start;
-
-	start = timer_us(0);
+	uint64_t start = 0;
 
 	while (1) {
 		// CMD1 queries whether initialization is done.
@@ -464,10 +454,11 @@ static int mmc_complete_op_cond(MmcMedia *media)
 			break;
 
 		// Check if init timeout has expired.
-		if (timer_us(start) > timeout)
+		if (start > timeout)
 			return MMC_UNUSABLE_ERR;
 
 		udelay(100);
+		start += 100;
 	}
 
 	media->version = MMC_VERSION_UNKNOWN;
@@ -534,7 +525,6 @@ static int mmc_switch(MmcMedia *media, uint8_t set, uint8_t index,
 	return ret;
 
 }
-
 
 /*
  * Select timing parameters for host.
@@ -740,7 +730,6 @@ out_err:
 	mmc_error("%s failed, error %d\n", __func__, err);
 	return err;
 }
-
 
 int mmc_retune(MmcCtrlr *ctrlr)
 {
@@ -1049,8 +1038,6 @@ static int sd_change_freq(MmcMedia *media)
 	return 0;
 }
 
-
-
 static uint32_t mmc_calculate_transfer_speed(uint32_t csd0)
 {
 	uint32_t mult, freq;
@@ -1111,7 +1098,6 @@ static int mmc_startup(MmcMedia *media)
 		return err;
 
 	memcpy(media->cid, cmd.response, sizeof(media->cid));
-
 	/*
 	 * For MMC cards, set the Relative Address.
 	 * For SD cards, get the Relatvie Address.
@@ -1338,14 +1324,6 @@ static int mmc_startup(MmcMedia *media)
 
 		if (err)
 			return err;
-
-#ifdef CONFIG_MMC_H400
-		err = mmc_select_hs400(media);
-
-		if (err)
-			return err;
-
-#endif
 	}
 
 	media->dev.block_count = media->capacity / media->read_bl_len;
@@ -1384,7 +1362,6 @@ int mmc_setup_media(MmcCtrlr *ctrlr)
 {
 	int err;
 
-	//MmcMedia *media = xzalloc(sizeof(*media));
 	MmcMedia *media = &emmc_media;
 
 	memset(media, 0, sizeof(MmcMedia));
@@ -1397,15 +1374,8 @@ int mmc_setup_media(MmcCtrlr *ctrlr)
 	err = mmc_go_idle(media);
 
 	if (err) {
-		//free(media);
 		return err;
 	}
-
-	/* Test for SD version 2 */
-	//err = mmc_send_if_cond(media);
-
-	/* Get SD card operating condition */
-	//err = sd_send_op_cond(media);
 
 	err = MMC_TIMEOUT;
 
@@ -1415,15 +1385,12 @@ int mmc_setup_media(MmcCtrlr *ctrlr)
 
 		if (err && err != MMC_IN_PROGRESS) {
 			mmc_error("Card did not respond to voltage select!\n", "");
-			//free(media);
 			return MMC_UNUSABLE_ERR;
 		}
 	}
 
-	if (err && err != MMC_IN_PROGRESS) {
-		//free(media);
+	if (err && err != MMC_IN_PROGRESS)
 		return err;
-	}
 
 	if (err == MMC_IN_PROGRESS)
 		err = mmc_complete_op_cond(media);
@@ -1437,16 +1404,11 @@ int mmc_setup_media(MmcCtrlr *ctrlr)
 		}
 	}
 
-	//free(media);
 	return err;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// BlockDevice utilities and callbacks
-
 static inline MmcMedia *mmc_media(BlockDevOps *me)
 {
-	//return container_of(me, MmcMedia, dev.ops);
 	return emmc_host.mmc_ctrlr.media;
 }
 
@@ -1496,8 +1458,6 @@ lba_t block_mmc_read(BlockDevOps *me, lba_t start, lba_t count, void *buffer)
 {
 	uint8_t *dest = (uint8_t *)buffer;
 
-	//if (block_mmc_setup(me, start, count, 1) == 0)
-	//	return 0;
 	lba_t todo = count;
 	MmcMedia *media = mmc_media(me);
 	MmcCtrlr *ctrlr = mmc_ctrlr(media);
@@ -1530,8 +1490,6 @@ lba_t block_mmc_write(BlockDevOps *me, lba_t start, lba_t count,
 {
 	const uint8_t *src = (const uint8_t *)buffer;
 
-	//if (block_mmc_setup(me, start, count, 0) == 0)
-	//	return 0;
 	lba_t todo = count;
 	MmcMedia *media = mmc_media(me);
 	MmcCtrlr *ctrlr = mmc_ctrlr(media);
@@ -1557,16 +1515,40 @@ lba_t block_mmc_write(BlockDevOps *me, lba_t start, lba_t count,
 	return count;
 }
 
+unsigned int SetEmmcClk(unsigned int clock)
+{
+	unsigned int clk_sel, cclk_emmc;
+
+	if (clock == 0)
+		return 0;
+
+	if (clock >= 200000000) {
+		clk_sel = 1;
+	} else if (clock >= 150000000) {
+		clk_sel = 2;
+	} else if (clock >= 100000000) {
+		clk_sel = 3;
+	} else if (clock >= 50000000) {
+		clk_sel = 4;
+	} else if (clock >= 24000000) {
+		clk_sel = 0;
+	} else {
+		clk_sel = 5; /* 375KHZ*/
+	}
+
+	PRINT_E("SetEmmcClk: %d, %d\n", clock, clk_sel);
+	CRU->CRU_CLKSEL_CON[28] = ((7 << 12) << 16) | (clk_sel << 12);
+
+	return clock;
+}
 
 SdhciHost *new_mem_sdhci_host(void *ioaddr, int platform_info,
 			      int clock_min, int clock_max, int clock_base)
 {
 	SdhciHost *host;
-	int removable = platform_info & SDHCI_PLATFORM_REMOVABLE;
 
 	host = mmc_get_host();
 	memset(host, 0, sizeof(SdhciHost));
-	//host = xzalloc(sizeof(*host));
 
 	host->quirks = SDHCI_QUIRK_NO_HISPD_BIT |
 		       SDHCI_QUIRK_NO_SIMULT_VDD_AND_POWER;
@@ -1584,44 +1566,36 @@ SdhciHost *new_mem_sdhci_host(void *ioaddr, int platform_info,
 
 	host->clock_f_min = clock_min;
 	host->clock_f_max = clock_max;
-	host->removable = removable;
+
 	host->ioaddr = ioaddr;
 
 	host->set_clock = &SetEmmcClk;
 
-	if (!removable)
-		/*
-		 * The value translates to 'block access mode, supporting
-		 * 1.7..1.95 and 2.7..3.6 voltage ranges, which is typical for
-		 * eMMC devices.
-		 */
-		host->mmc_ctrlr.hardcoded_voltage = 0x40ff8080;
+	/*
+		* The value translates to 'block access mode, supporting
+		* 1.7..1.95 and 2.7..3.6 voltage ranges, which is typical for
+		* eMMC devices.
+		*/
+	host->mmc_ctrlr.hardcoded_voltage = 0x40ff8080;
 
 	add_sdhci(host);
 
 	return host;
 }
 
-
-void sdmmc_init(uint32 cardId)
+void sdmmc_init(void *base_reg)
 {
-	if (2 != cardId)
-		return;
-
-	sdmmcGpioInit(cardId);
-
 	__mmc_debug = 0;
 	__mmc_trace = 0;
 
-	new_mem_sdhci_host((void *)EMMC_BASE_ADDR,
+	new_mem_sdhci_host(base_reg,
 			   //SDHCI_PLATFORM_NO_EMMC_HS200 |
 			   SDHCI_PLATFORM_NO_CLK_BASE,
-			   375 * 1000,                          // 375KHz
+			   375 * 1000,
 			   CONFIG_MMC_CLK_MAX, 24);
 }
 
-
-int32 sdmmc_open(int32 cardId)
+int32_t sdmmc_open(void)
 {
 	SdhciHost *host = mmc_get_host();
 
@@ -1631,7 +1605,7 @@ int32 sdmmc_open(int32 cardId)
 	return SDM_FALSE;
 }
 
-int32 sdmmc_read(int32 cardId, uint32 start, uint32 count, void *buffer)
+int32_t sdmmc_read(uint32_t start, uint32_t count, void *buffer)
 {
 	lba_t ret;
 
@@ -1643,8 +1617,7 @@ int32 sdmmc_read(int32 cardId, uint32 start, uint32 count, void *buffer)
 		return SDM_FALSE;
 }
 
-
-int32  sdmmc_write(int32 cardId, uint32 start, uint32 count, void *buffer)
+int32_t sdmmc_write(uint32_t start, uint32_t count, void *buffer)
 {
 	lba_t ret;
 
@@ -1656,16 +1629,14 @@ int32  sdmmc_write(int32 cardId, uint32 start, uint32 count, void *buffer)
 		return SDM_FALSE;
 }
 
-int32 sdmmc_ioctrl(uint32 cmd, void *param)
+int32_t sdmmc_ioctrl(uint32_t cmd, void *param)
 {
-	int32            ret = SDM_SUCCESS;
-	uint32          *pTmp;
-	int32            cardId;
-	int              need_update;
-	SdhciHost        *host = mmc_get_host();
+	int32_t ret = SDM_SUCCESS;
+	uint32_t *pTmp;
+	int need_update;
+	SdhciHost *host = mmc_get_host();
 
-	pTmp = (uint32 *)param;
-	cardId = (int32)pTmp[0];
+	pTmp = (uint32_t *)param;
 	need_update = host->mmc_ctrlr.ctrlr.need_update;
 
 	if (!(cmd == SDM_IOCTRL_REGISTER_CARD)) {
@@ -1675,7 +1646,7 @@ int32 sdmmc_ioctrl(uint32 cmd, void *param)
 			} else if (cmd == SDM_IOCTR_GET_CAPABILITY) {
 				pTmp[1] = 0;
 			} else if (cmd == SDM_IOCTR_GET_PSN) {
-				pTmp[1] = (uint32)NULL;
+				pTmp[1] = (uint32_t)NULL;
 			} else {
 			}
 
@@ -1700,7 +1671,6 @@ int32 sdmmc_ioctrl(uint32 cmd, void *param)
 		case SDM_IOCTR_GET_CAPABILITY:
 			if (!need_update) {
 				pTmp[1] = (host->mmc_ctrlr.media->capacity >> 9);
-				//PRINT_E("capbility:%dMB\n", pTmp[1]>>11);
 			} else {
 				pTmp[1] = 0;
 				ret = SDM_CARD_CLOSED;
@@ -1710,9 +1680,9 @@ int32 sdmmc_ioctrl(uint32 cmd, void *param)
 
 		case SDM_IOCTR_GET_PSN:
 			if (!need_update) {
-				pTmp[1] = (uint32)NULL; //未实现
+				pTmp[1] = (uint32_t)NULL;
 			} else {
-				pTmp[1] = (uint32)NULL;
+				pTmp[1] = (uint32_t)NULL;
 				ret = SDM_CARD_CLOSED;
 			}
 
@@ -1730,27 +1700,11 @@ int32 sdmmc_ioctrl(uint32 cmd, void *param)
 
 		case SDM_IOCTR_GET_BOOT_CAPABILITY:
 			if (!need_update) {
-				pTmp[1] = 0x100000;//gSDMDriver[port].cardInfo.bootSize;
+				pTmp[1] = 0x100000;
 			} else {
 				pTmp[1] = 0;
 				ret = SDM_CARD_CLOSED;
 			}
-
-			break;
-
-		case SDM_IOCTR_INIT_BOOT_PARTITION:
-
-			break;
-
-		case SDM_IOCTR_DEINIT_BOOT_PARTITION:
-
-			break;
-
-		case SDM_IOCTR_SET_BOOT_BUSWIDTH:      //设置boot模式下的线宽
-
-			break;
-
-		case SDM_IOCTR_ACCESS_BOOT_PARTITION: //选择读写的区域; 0--用户区；1--boot1； 2--boot2;
 
 			break;
 
@@ -1760,16 +1714,6 @@ int32 sdmmc_ioctrl(uint32 cmd, void *param)
 	}
 
 	return ret;
-
 }
-
-
-SDMMMC_DEVICE sdhci_sdmmc_dev = {
-	sdmmc_init,
-	sdmmc_open,
-	sdmmc_read,
-	sdmmc_write,
-	sdmmc_ioctrl
-};
 
 #endif

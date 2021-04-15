@@ -20,49 +20,45 @@
  * MA 02111-1307 USA
  */
 
-#ifndef __DRIVERS_STORAGE_BLOCKDEV_H__
-#define __DRIVERS_STORAGE_BLOCKDEV_H__
+#ifndef __SDHCI_BLOCKDEV_H__
+#define __SDHCI_BLOCKDEV_H__
 
-//#include <stdint.h>
+#include "hal_bsp.h"
+#include "hal_base.h"
 
-//#include "base/list.h"
-//#include "drivers/storage/stream.h"
+typedef unsigned long	u64;
+typedef unsigned char	u8;
+typedef signed char	s8;
+typedef unsigned short	u16;
+typedef signed short	s16;
+typedef unsigned int	u32;
+typedef signed int	s32;
+
+#define PRINT_E 	printf
+#define udelay		HAL_DelayUs
+#define mdelay		HAL_DelayMs
+#define MAX		HAL_MAX
+#define MIN		HAL_MIN
+#define FALSE		HAL_FALSE
+#define TRUE		HAL_TRUE
 
 typedef uint64_t lba_t;
 
-/*typedef struct BlockDevOps {
-	lba_t (*read)(struct BlockDevOps *me, lba_t start, lba_t count,
-		      void *buffer);
-	lba_t (*write)(struct BlockDevOps *me, lba_t start, lba_t count,
-		       const void *buffer);
-	lba_t (*fill_write)(struct BlockDevOps *me, lba_t start, lba_t count,
-			    uint32_t fill_pattern);
-	lba_t (*erase)(struct BlockDevOps *me, lba_t start, lba_t count);
-	StreamOps *(*new_stream)(struct BlockDevOps *me, lba_t start,
-				 lba_t count);
-} BlockDevOps;*/
-
 typedef struct BlockDevOps {
-    int card_id;
+	int card_id;
 } BlockDevOps;
 
 typedef struct BlockDev {
 	BlockDevOps ops;
 
 	const char *name;
-	int removable;
 	int external_gpt;
 	unsigned int block_size;
 	/* If external_gpt = 0, then stream_block_count may be 0, indicating
 	 * that the block_count value applies for both read/write and streams */
 	lba_t block_count;		/* size addressable by read/write */
 	lba_t stream_block_count;	/* size addressible by new_stream */
-
-	//ListNode list_node;
 } BlockDev;
-
-//extern ListNode fixed_block_devices;
-//extern ListNode removable_block_devices;
 
 typedef struct BlockDevCtrlrOps {
 	int (*update)(struct BlockDevCtrlrOps *me);
@@ -77,19 +73,11 @@ typedef struct BlockDevCtrlr {
 	BlockDevCtrlrOps ops;
 
 	int need_update;
-	//ListNode list_node;
 } BlockDevCtrlr;
-
-//extern ListNode fixed_block_dev_controllers;
-//extern ListNode removable_block_dev_controllers;
-
-//StreamOps *new_simple_stream(BlockDevOps *me, lba_t start, lba_t count);
 
 typedef enum {
 	BLOCKDEV_FIXED,
 	BLOCKDEV_REMOVABLE,
 } blockdev_type_t;
 
-//int get_all_bdevs(blockdev_type_t type, ListNode **bdevs);
-
-#endif /* __DRIVERS_STORAGE_BLOCKDEV_H__ */
+#endif

@@ -25,8 +25,8 @@
  * MA 02111-1307 USA
  */
 
-#ifndef __DRIVERS_STORAGE_MMC_H__
-#define __DRIVERS_STORAGE_MMC_H__
+#ifndef __SDHCI_MMC_H__
+#define __SDHCI_MMC_H__
 
 #include "blockdev.h"
 #include "bouncebuf.h"
@@ -131,14 +131,14 @@
 #define EXT_CSD_CARD_TYPE_HS	(EXT_CSD_CARD_TYPE_HS_26 | \
 				 EXT_CSD_CARD_TYPE_HS_52)
 #define EXT_CSD_CARD_TYPE_DDR_1_8V  (1<<2)   /* Card can run at 52MHz */
-					     /* DDR mode @1.8V or 3V I/O */
+/* DDR mode @1.8V or 3V I/O */
 #define EXT_CSD_CARD_TYPE_DDR_1_2V  (1<<3)   /* Card can run at 52MHz */
-					     /* DDR mode @1.2V I/O */
+/* DDR mode @1.2V I/O */
 #define EXT_CSD_CARD_TYPE_DDR_52       (EXT_CSD_CARD_TYPE_DDR_1_8V  \
 					| EXT_CSD_CARD_TYPE_DDR_1_2V)
 #define EXT_CSD_CARD_TYPE_HS200_1_8V	(1<<4)	/* Card can run at 200MHz */
 #define EXT_CSD_CARD_TYPE_HS200_1_2V	(1<<5)	/* Card can run at 200MHz */
-						/* SDR mode @1.2V I/O */
+/* SDR mode @1.2V I/O */
 #define EXT_CSD_CARD_TYPE_HS200		(EXT_CSD_CARD_TYPE_HS200_1_8V | \
 					 EXT_CSD_CARD_TYPE_HS200_1_2V)
 #define EXT_CSD_CARD_TYPE_HS400_1_8V	(1<<6)	/* Card can run at 200MHz DDR, 1.8V */
@@ -274,7 +274,6 @@
 #define MMC_TIMING_MMC_HS200	9
 #define MMC_TIMING_MMC_HS400	10
 
-
 typedef struct MmcCommand {
 	uint16_t cmdidx;
 	uint32_t resp_type;
@@ -308,11 +307,11 @@ typedef struct MmcCtrlr {
 	uint32_t bus_hz;
 	uint32_t caps;
 	uint32_t b_max;
-    uint32_t timing;
-    
-    int		 can_retune;	/* re-tuning can be used */
-    int      need_retune;    /* re-tuning is needed */
-    int      enhanced_strobe;
+	uint32_t timing;
+
+	int		 can_retune;	/* re-tuning can be used */
+	int      need_retune;    /* re-tuning is needed */
+	int      enhanced_strobe;
 	/*
 	 * Some eMMC devices do not support iterative OCR setting, they need
 	 * to be programmed with the required/expected value. This field is
@@ -323,9 +322,9 @@ typedef struct MmcCtrlr {
 	int (*send_cmd)(struct MmcCtrlr *me, MmcCommand *cmd, MmcData *data);
 	void (*set_ios)(struct MmcCtrlr *me);
 
-    int	(*execute_tuning)(struct MmcCtrlr *me, u32 opcode);
-    
-    void	(*hs400_enhanced_strobe)(struct MmcCtrlr *me, u32 enhanced_strobe);
+	int	(*execute_tuning)(struct MmcCtrlr *me, u32 opcode);
+
+	void	(*hs400_enhanced_strobe)(struct MmcCtrlr *me, u32 enhanced_strobe);
 } MmcCtrlr;
 
 typedef struct MmcMedia {
@@ -347,13 +346,13 @@ typedef struct MmcMedia {
 
 	uint32_t ocr;
 	uint16_t rca;
-    uint16_t strobe_support;
+	uint16_t strobe_support;
 	uint32_t scr[2];
 	uint32_t csd[4];
 	uint32_t cid[4];
-    unsigned int        raw_card_type;
-    unsigned int        mmc_avail_type; /* supported device type by both host and card */
-    
+	unsigned int raw_card_type;
+	unsigned int mmc_avail_type; /* supported device type by both host and card */
+
 	uint32_t op_cond_response; // The response byte from the last op_cond
 } MmcMedia;
 
@@ -377,9 +376,9 @@ int mmc_retune(MmcCtrlr *ctrlr);
 // Debug functions.
 extern int __mmc_debug, __mmc_trace;
 #define mmc_debug(format...) \
-		while (__mmc_debug) { PRINT_E("mmc: " format); break; }
+		while (__mmc_debug) { printf("mmc: " format); break; }
 #define mmc_trace(format...) \
-		while (__mmc_trace) { PRINT_E(format); break; }
-#define mmc_error(format...) PRINT_E("mmc: ERROR: " format)
+		while (__mmc_trace) { printf(format); break; }
+#define mmc_error(format...) printf("mmc: ERROR: " format)
 
-#endif /* __DRIVERS_STORAGE_MMC_H__ */
+#endif
