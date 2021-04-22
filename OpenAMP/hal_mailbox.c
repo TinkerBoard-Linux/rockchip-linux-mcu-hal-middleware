@@ -202,15 +202,15 @@ HAL_StatusTypeDef HAL_MAILBOX_Init(MBOX_HandleTypeDef *hmbox, int channel)
         hmbox->Instance->A2B_INTEN = 0xf;
         hmbox->Instance->B2A_INTEN = 0xf;
         if (channel == 0) {
-            HAL_GIC_SetHandler(MAIBOX0_TX_IRQn, HAL_MBOX_RX_IRQHandler);
-            HAL_GIC_Enable(MAIBOX0_TX_IRQn);
-            HAL_GIC_SetHandler(MAIBOX1_TX_IRQn, HAL_MBOX_RX_IRQHandler);
-            HAL_GIC_Enable(MAIBOX1_TX_IRQn);
+            HAL_GIC_SetHandler(MBOX0_CH0_A2B_IRQn, HAL_MBOX_RX_IRQHandler);
+            HAL_GIC_Enable(MBOX0_CH0_A2B_IRQn);
+            HAL_GIC_SetHandler(MBOX0_CH1_A2B_IRQn, HAL_MBOX_RX_IRQHandler);
+            HAL_GIC_Enable(MBOX0_CH1_A2B_IRQn);
         } else if (channel == 1) {
-            HAL_GIC_SetHandler(MAIBOX0_RX_IRQn, HAL_MBOX_TX_IRQHandler);
-            HAL_GIC_Enable(MAIBOX0_RX_IRQn);
-            HAL_GIC_SetHandler(MAIBOX1_RX_IRQn, HAL_MBOX_TX_IRQHandler);
-            HAL_GIC_Enable(MAIBOX1_RX_IRQn);
+            HAL_GIC_SetHandler(MBOX0_CH0_B2A_IRQn, HAL_MBOX_TX_IRQHandler);
+            HAL_GIC_Enable(MBOX0_CH0_B2A_IRQn);
+            HAL_GIC_SetHandler(MBOX0_CH1_B2A_IRQn, HAL_MBOX_TX_IRQHandler);
+            HAL_GIC_Enable(MBOX0_CH1_B2A_IRQn);
         } else {
             err = HAL_ERROR;
         }
