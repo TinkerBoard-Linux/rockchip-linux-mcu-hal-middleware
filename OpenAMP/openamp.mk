@@ -5,7 +5,7 @@
 #-------------------------------------------------------------------------
 # set OPENAMP_PATH
 #-------------------------------------------------------------------------
-OPEN_AMP_INC += \
+OPENAMP_INC += \
 -I"$(HAL_PATH)/middleware/OpenAMP/open-amp/lib/include" \
 -I"$(HAL_PATH)/middleware/OpenAMP/libmetal/lib/include" \
 -I"$(HAL_PATH)/middleware/OpenAMP/virtual_driver" \
