@@ -64,7 +64,7 @@ HAL_StatusTypeDef HAL_MBOX_NotifyCPU(MBOX_HandleTypeDef const *const hmbox, uint
      * to the other side.
      */
     log_dbg("%s: Cpuid is %d, ChannelIndex is %d, ChannelDir is %d\n",
-            __func__, HAL_CPU_TOPOLOGY_getCurrentCpuId(), ChannelIndex, ChannelDir);
+            __func__, HAL_CPU_TOPOLOGY_GetCurrentCpuId(), ChannelIndex, ChannelDir);
     if (ChannelIndex == 0) {
         if (ChannelDir == MBOX_CHANNEL_DIR_TX) {
             hmbox->Instance->B2A[ChannelIndex].CMD = ChannelIndex;
@@ -94,7 +94,7 @@ void HAL_MBOX_TX_IRQHandler(uint32_t irq)
 
     log_dbg("%s: A2B_STATUS is %x, cpuid is %d, irq is %d\n",
             mbox->Instance->A2B_STATUS,
-            HAL_CPU_TOPOLOGY_getCurrentCpuId(), irq);
+            HAL_CPU_TOPOLOGY_GetCurrentCpuId(), irq);
 
     temp = mbox->Instance->A2B_STATUS;
     mbox->Instance->A2B_STATUS = temp;
@@ -127,7 +127,7 @@ void HAL_MBOX_RX_IRQHandler(uint32_t irq)
 
     log_dbg("%s: B2A_STATUS is %x, cpuid is %d, irq is %d\n",
             mbox->Instance->B2A_STATUS,
-            HAL_CPU_TOPOLOGY_getCurrentCpuId(), irq);
+            HAL_CPU_TOPOLOGY_GetCurrentCpuId(), irq);
     temp = mbox->Instance->B2A_STATUS;
     mbox->Instance->B2A_STATUS = temp;
     switch (temp) {

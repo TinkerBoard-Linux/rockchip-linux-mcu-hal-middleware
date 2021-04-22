@@ -146,7 +146,7 @@ void OPENAMP_check_for_message(void)
 int OPENAMP_Init(void)
 {
     hmbox.Instance = MBOX;
-    if (HAL_MAILBOX_Init(&hmbox, HAL_CPU_TOPOLOGY_getCurrentCpuId()) != HAL_OK)
+    if (HAL_MAILBOX_Init(&hmbox, HAL_CPU_TOPOLOGY_GetCurrentCpuId()) != HAL_OK)
     {
         return -1;
     }

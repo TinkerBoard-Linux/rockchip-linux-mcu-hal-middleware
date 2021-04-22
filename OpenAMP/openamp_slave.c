@@ -90,7 +90,7 @@ int App_Slave(struct rpmsg_device *rdev, void *priv)
 
 void OPENAMP_Slave_Echo(void)
 {
-     if (HAL_CPU_TOPOLOGY_getCurrentCpuId() == RPMSG_REMOTE) {
+     if (HAL_CPU_TOPOLOGY_GetCurrentCpuId() == RPMSG_REMOTE) {
         MX_OPENAMP_Init(RPMSG_REMOTE, NULL);
         App_Slave(&rvdev.rdev, NULL);
      }

@@ -123,7 +123,7 @@ int App_Master(struct rpmsg_device *rdev, void *priv)
 
 void OPENAMP_Master_Ping(void)
 {
-    if (HAL_CPU_TOPOLOGY_getCurrentCpuId() == RPMSG_MASTER) {
+    if (HAL_CPU_TOPOLOGY_GetCurrentCpuId() == RPMSG_MASTER) {
         MX_OPENAMP_Init(RPMSG_MASTER, NULL);
         App_Master(&rvdev.rdev, rpmsg_name_service_bind_cb);
     }
