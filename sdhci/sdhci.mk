@@ -1,5 +1,4 @@
-
- # SPDX-License-Identifier: BSD-3-Clause */
+# SPDX-License-Identifier: BSD-3-Clause */
 
 # Copyright (c) 2021 Rockchip Electronics Co., Ltd.
 
@@ -11,3 +10,6 @@ SDHCI_INC += \
 
 SDHCI_SRC += \
     $(HAL_PATH)/middleware/sdhci
+
+SRC_DIRS += $(SDHCI_SRC)
+INCLUDES += $(SDHCI_INC)
