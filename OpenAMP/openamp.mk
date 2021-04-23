@@ -20,3 +20,6 @@ OPENAMP_SRC += \
     $(HAL_PATH)/middleware/OpenAMP/libmetal/lib  \
     $(HAL_PATH)/middleware/OpenAMP/libmetal/lib/system/generic  \
     $(HAL_PATH)/middleware/OpenAMP/libmetal/lib/system/generic/cortexm \
+
+SRC_DIRS += $(OPENAMP_SRC)
+INCLUDES += $(OPENAMP_INC)
