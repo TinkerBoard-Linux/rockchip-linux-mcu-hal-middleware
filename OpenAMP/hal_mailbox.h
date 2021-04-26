@@ -64,8 +64,8 @@ HAL_StatusTypeDef HAL_MBOX_NotifyCPU(MBOX_HandleTypeDef const *const hmbox, uint
 HAL_MBOX_StateTypeDef HAL_MBOX_GetState(MBOX_HandleTypeDef const *const hmbox);
 HAL_StatusTypeDef HAL_MAILBOX_Init(MBOX_HandleTypeDef *hmbox, int channel);
 
-void HAL_MBOX_TX_IRQHandler(uint32_t irq);
-void HAL_MBOX_RX_IRQHandler(uint32_t irq);
+HAL_Status HAL_MBOX_TX_IRQHandler(uint32_t irq, void *args);
+HAL_Status HAL_MBOX_RX_IRQHandler(uint32_t irq, void *args);
 void HAL_MBOX_TxCallback(MBOX_HandleTypeDef *hmbox, uint32_t ChannelIndex, MBOX_CHANNELDirTypeDef ChannelDir);
 void HAL_MBOX_RxCallback(MBOX_HandleTypeDef *hmbox, uint32_t ChannelIndex, MBOX_CHANNELDirTypeDef ChannelDir);
 

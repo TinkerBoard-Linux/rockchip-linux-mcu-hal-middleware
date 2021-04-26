@@ -3,11 +3,9 @@
  * Copyright (c) 2021 Rockchip Electronics Co., Ltd.
  */
 
+#include "hal_base.h"
 #include "hal_mailbox.h"
-#include "hal_gic.h"
-#include "hal_cpu_topology.h"
 #include "openamp_log.h"
-
 
 void MBOX_MaskInterrupt(uint32_t ChannelIndex, MBOX_CHANNELDirTypeDef ChannelDir);
 void MBOX_UnmaskInterrupt(uint32_t ChannelIndex, MBOX_CHANNELDirTypeDef ChannelDir);
@@ -86,7 +84,7 @@ HAL_StatusTypeDef HAL_MBOX_NotifyCPU(MBOX_HandleTypeDef const *const hmbox, uint
     return err;
 }
 
-void HAL_MBOX_TX_IRQHandler(uint32_t irq)
+HAL_Status HAL_MBOX_TX_IRQHandler(uint32_t irq, void *args)
 {
     volatile uint32_t temp;
     uint32_t ch_count;
@@ -115,11 +113,13 @@ void HAL_MBOX_TX_IRQHandler(uint32_t irq)
             mbox->ChannelCallbackRx[ch_count - 1](mbox, ch_count - 1, MBOX_CHANNEL_DIR_RX);
         }
     }
+
+    return HAL_OK;
 }
 
 extern int msg_received_ch2;
 extern int msg_received_ch1;
-void HAL_MBOX_RX_IRQHandler(uint32_t irq)
+HAL_Status HAL_MBOX_RX_IRQHandler(uint32_t irq, void *args)
 {
     volatile uint32_t temp;
     uint32_t ch_count;
@@ -144,6 +144,8 @@ void HAL_MBOX_RX_IRQHandler(uint32_t irq)
 
     if (ch_count)
         msg_received_ch1 = 2;
+
+    return HAL_OK;
 }
 
 void HAL_MBOX_RxCallback(MBOX_HandleTypeDef *hmbox, uint32_t ChannelIndex, MBOX_CHANNELDirTypeDef ChannelDir)
@@ -202,14 +204,14 @@ HAL_StatusTypeDef HAL_MAILBOX_Init(MBOX_HandleTypeDef *hmbox, int channel)
         hmbox->Instance->A2B_INTEN = 0xf;
         hmbox->Instance->B2A_INTEN = 0xf;
         if (channel == 0) {
-            HAL_GIC_SetHandler(MBOX0_CH0_A2B_IRQn, HAL_MBOX_RX_IRQHandler);
+            HAL_IRQ_HANDLER_SetIRQHandler(MBOX0_CH0_A2B_IRQn, HAL_MBOX_RX_IRQHandler, NULL);
             HAL_GIC_Enable(MBOX0_CH0_A2B_IRQn);
-            HAL_GIC_SetHandler(MBOX0_CH1_A2B_IRQn, HAL_MBOX_RX_IRQHandler);
+            HAL_IRQ_HANDLER_SetIRQHandler(MBOX0_CH1_A2B_IRQn, HAL_MBOX_RX_IRQHandler, NULL);
             HAL_GIC_Enable(MBOX0_CH1_A2B_IRQn);
         } else if (channel == 1) {
-            HAL_GIC_SetHandler(MBOX0_CH0_B2A_IRQn, HAL_MBOX_TX_IRQHandler);
+            HAL_IRQ_HANDLER_SetIRQHandler(MBOX0_CH0_B2A_IRQn, HAL_MBOX_TX_IRQHandler, NULL);
             HAL_GIC_Enable(MBOX0_CH0_B2A_IRQn);
-            HAL_GIC_SetHandler(MBOX0_CH1_B2A_IRQn, HAL_MBOX_TX_IRQHandler);
+            HAL_IRQ_HANDLER_SetIRQHandler(MBOX0_CH1_B2A_IRQn, HAL_MBOX_TX_IRQHandler, NULL);
             HAL_GIC_Enable(MBOX0_CH1_B2A_IRQn);
         } else {
             err = HAL_ERROR;
