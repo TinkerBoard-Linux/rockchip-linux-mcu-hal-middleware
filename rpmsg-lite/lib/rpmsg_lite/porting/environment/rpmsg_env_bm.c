@@ -44,6 +44,7 @@
  **************************************************************************/
 
 #include "rpmsg_compiler.h"
+#include "rpmsg_config.h"
 #include "rpmsg_env.h"
 #include "rpmsg_platform.h"
 #include "virtqueue.h"
@@ -53,8 +54,10 @@
 
 static int32_t env_init_counter = 0;
 
+#ifndef ISR_COUNT
 /* Max supported ISR counts */
 #define ISR_COUNT (12U)
+#endif
 /*!
  * Structure to keep track of registered ISR's.
  */
