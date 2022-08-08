@@ -15,7 +15,7 @@
 #define RL_PLATFORM_IRQ_BASE            RPMSG_01_IRQn
 
 /*
- * env_bm isr count
+ * env bm/os isr count
  * 4bit for master and 4bit for remote. each link_id has 2 virtqueue.
  * TODO: Modify here to reduce memory usage
  */

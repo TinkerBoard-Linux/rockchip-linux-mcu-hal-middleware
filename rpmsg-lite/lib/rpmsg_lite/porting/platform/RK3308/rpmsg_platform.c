@@ -14,7 +14,7 @@
 #error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 0"
 #endif
 
-static int32_t isr_counter     = 0;
+static int32_t isr_counter = 0;
 static int32_t disable_counter = 0;
 static int32_t first_notify = 0;
 static void *platform_lock;
@@ -185,7 +185,7 @@ void platform_time_delay(uint32_t num_msec)
  */
 int32_t platform_in_isr(void)
 {
-    return 0;
+    return ((__get_mode() != 0x10) ? 1 : 0);
 }
 
 /**
