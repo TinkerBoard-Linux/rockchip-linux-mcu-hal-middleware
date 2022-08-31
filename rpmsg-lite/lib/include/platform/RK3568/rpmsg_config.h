@@ -12,10 +12,21 @@
 
 #define RL_MAX_INSTANCE_NUM (12U)
 #define RL_PLATFORM_HIGHEST_LINK_ID     (0xFFU)
-#define RL_PLATFORM_IRQ_BASE            RPMSG_01_IRQn
 
 /* TODO: Select the IPI method according to the actual scene */
 #define RL_PLATFORM_USING_SOFTIRQ
+//#define RL_PLATFORM_USING_MBOX
+
+#ifdef RL_PLATFORM_USING_SOFTIRQ
+#define RL_PLATFORM_IRQ_BASE            RPMSG_01_IRQn
+#endif
+
+#ifdef RL_PLATFORM_USING_MBOX
+#define RL_PLATFORM_B2A_IRQ_BASE        MBOX0_CH0_B2A_IRQn
+#define RL_PLATFORM_A2B_IRQ_BASE        MBOX0_CH0_A2B_IRQn
+#define RL_PLATFORM_M_IRQ(n)            MBOX0_CH##n##_B2A_IRQn
+#define RL_PLATFORM_R_IRQ(n)            MBOX0_CH##n##_A2B_IRQn
+#endif
 
 /*
  * env bm/os isr count

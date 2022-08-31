@@ -22,6 +22,7 @@ static void *platform_lock;
 static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
 #endif
 
+#ifdef RL_PLATFORM_USING_SOFTIRQ
 /* RK3568 uses 12 consecutive interrupts, refer to soc.h */
 static inline uint32_t rl_set_irq_mr(uint32_t vector_id)
 {
@@ -91,6 +92,81 @@ static void rpmsg_remote_isr(int irqn, void *param)
     }
     HAL_GIC_EndOfInterrupt(irqn);
 }
+#endif
+
+#ifdef RL_PLATFORM_USING_MBOX
+/* master core uses RL_MBOX_A2B and remote core uses RL_MBOX_B2A */
+#define RL_MBOX_B2A 0
+#define RL_MBOX_A2B 1
+
+static struct MBOX_REG *rl_pMBox = MBOX0;
+static int32_t register_count = 0;
+
+static void rpmsg_mbox_isr(int irqn, void *param)
+{
+    HAL_MBOX_IrqHandler(irqn, rl_pMBox);
+    HAL_GIC_EndOfInterrupt(irqn);
+}
+
+static void rpmsg_master_cb(struct MBOX_CMD_DAT *msg, void *args)
+{
+    uint32_t link_id;
+    struct MBOX_CMD_DAT rx_msg = *msg;
+
+    link_id = rx_msg.CMD & 0xFFU;
+    env_isr(RL_GET_VQ_ID(link_id, 0));
+}
+
+static void rpmsg_remote_cb(struct MBOX_CMD_DAT *msg, void *args)
+{
+    uint32_t link_id;
+    struct MBOX_CMD_DAT rx_msg = *msg;
+
+    link_id = rx_msg.CMD & 0xFFU;
+
+    if (first_notify == 0)
+    {
+        env_isr(RL_GET_VQ_ID(link_id, 0));
+        first_notify++;
+    } else {
+        env_isr(RL_GET_VQ_ID(link_id, 1));
+    }
+}
+
+static inline uint32_t rl_mbox_m_irq(uint32_t cpu_id)
+{
+    uint32_t irqn;
+
+    irqn = cpu_id + RL_PLATFORM_B2A_IRQ_BASE;
+
+    return irqn;
+}
+
+static inline uint32_t rl_mbox_r_irq(uint32_t cpu_id)
+{
+    uint32_t irqn;
+
+    irqn = cpu_id + RL_PLATFORM_A2B_IRQ_BASE;
+
+    return irqn;
+}
+
+static struct MBOX_CLIENT mbox_clm[MBOX_CHAN_CNT] =
+{
+    { "mbox-clm0", RL_PLATFORM_M_IRQ(0), rpmsg_master_cb, (void *)MBOX_CH_0 },
+    { "mbox-clm1", RL_PLATFORM_M_IRQ(1), rpmsg_master_cb, (void *)MBOX_CH_1 },
+    { "mbox-clm2", RL_PLATFORM_M_IRQ(2), rpmsg_master_cb, (void *)MBOX_CH_2 },
+    { "mbox-clm3", RL_PLATFORM_M_IRQ(3), rpmsg_master_cb, (void *)MBOX_CH_3 },
+};
+
+static struct MBOX_CLIENT mbox_clr[MBOX_CHAN_CNT] =
+{
+    { "mbox-clr0", RL_PLATFORM_R_IRQ(0), rpmsg_remote_cb, (void *)MBOX_CH_0 },
+    { "mbox-clr1", RL_PLATFORM_R_IRQ(1), rpmsg_remote_cb, (void *)MBOX_CH_1 },
+    { "mbox-clr2", RL_PLATFORM_R_IRQ(2), rpmsg_remote_cb, (void *)MBOX_CH_2 },
+    { "mbox-clr3", RL_PLATFORM_R_IRQ(3), rpmsg_remote_cb, (void *)MBOX_CH_3 },
+};
+#endif
 
 static void platform_global_isr_disable(void)
 {
@@ -105,6 +181,10 @@ static void platform_global_isr_enable(void)
 int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
     uint32_t cpu_id;
+#ifdef RL_PLATFORM_USING_MBOX
+    int ret = 0;
+    struct MBOX_CLIENT *mbox_cl[MBOX_CHAN_CNT];
+#endif
 
     cpu_id = HAL_CPU_TOPOLOGY_GetCurrentCpuId();
     /* Register ISR to environment layer */
@@ -115,6 +195,7 @@ int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
     RL_ASSERT(0 <= isr_counter);
     if (isr_counter < 2 * RL_MAX_INSTANCE_NUM)
     {
+#ifdef RL_PLATFORM_USING_SOFTIRQ
         if (cpu_id == RL_GET_M_CPU_ID(vector_id))
         {
             HAL_GIC_SetIRouter(rl_set_irq_rm(vector_id), CPU_GET_AFFINITY(cpu_id, 0));
@@ -123,6 +204,37 @@ int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
             HAL_GIC_SetIRouter(rl_set_irq_mr(vector_id), CPU_GET_AFFINITY(cpu_id, 0));
             HAL_IRQ_HANDLER_SetIRQHandler(rl_set_irq_mr(vector_id), rpmsg_remote_isr, RL_GET_LINK_ID(vector_id));
         }
+#endif
+#ifdef RL_PLATFORM_USING_MBOX
+        if (cpu_id == RL_GET_M_CPU_ID(vector_id))
+        {
+            HAL_GIC_SetIRouter(rl_mbox_m_irq(RL_GET_R_CPU_ID(vector_id)), CPU_GET_AFFINITY(cpu_id, 0));
+            HAL_IRQ_HANDLER_SetIRQHandler(rl_mbox_m_irq(RL_GET_R_CPU_ID(vector_id)), rpmsg_mbox_isr, NULL);
+        } else {
+            HAL_GIC_SetIRouter(rl_mbox_r_irq(cpu_id), CPU_GET_AFFINITY(cpu_id, 0));
+            HAL_IRQ_HANDLER_SetIRQHandler(rl_mbox_r_irq(cpu_id), rpmsg_mbox_isr, NULL);
+        }
+        if (register_count % 2 == 0)
+        {
+            if (cpu_id == RL_GET_M_CPU_ID(vector_id))
+            {
+                HAL_MBOX_Init(rl_pMBox, RL_MBOX_A2B);
+                mbox_cl[RL_GET_R_CPU_ID(vector_id)] = &mbox_clm[RL_GET_R_CPU_ID(vector_id)];
+                ret = HAL_MBOX_RegisterClient(rl_pMBox, RL_GET_R_CPU_ID(vector_id), mbox_cl[RL_GET_R_CPU_ID(vector_id)]);
+                if (ret) {
+                    printf("mbox master client register failed, ret=%d\n", ret);
+                }
+            } else {
+                HAL_MBOX_Init(rl_pMBox, RL_MBOX_B2A);
+                mbox_cl[cpu_id] = &mbox_clr[cpu_id];
+                ret = HAL_MBOX_RegisterClient(rl_pMBox, cpu_id, mbox_cl[cpu_id]);
+                if (ret) {
+                    printf("mbox remote client register failed, ret=%d\n", ret);
+                }
+            }
+        }
+        register_count++;
+#endif
     }
     isr_counter++;
 
@@ -152,14 +264,27 @@ int32_t platform_deinit_interrupt(uint32_t vector_id)
 void platform_notify(uint32_t vector_id)
 {
     uint32_t cpu_id;
+#ifdef RL_PLATFORM_USING_MBOX
+    uint32_t link_id;
+    struct MBOX_CMD_DAT tx_msg;
+
+    link_id = RL_GET_LINK_ID(vector_id);
+    tx_msg.CMD = link_id & 0xFFU;
+    tx_msg.DATA = 0xFFFFFFFFU;
+#endif
 
     cpu_id = HAL_CPU_TOPOLOGY_GetCurrentCpuId();
     env_lock_mutex(platform_lock);
 
+#ifdef RL_PLATFORM_USING_SOFTIRQ
     if (cpu_id == RL_GET_M_CPU_ID(vector_id))
         HAL_GIC_SetPending(rl_set_irq_mr(vector_id));
     else
         HAL_GIC_SetPending(rl_set_irq_rm(vector_id));
+#endif
+#ifdef RL_PLATFORM_USING_MBOX
+    HAL_MBOX_SendMsg(rl_pMBox, RL_GET_R_CPU_ID(vector_id), &tx_msg);
+#endif
 
     env_unlock_mutex(platform_lock);
 }
@@ -209,10 +334,18 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
     disable_counter--;
     if (disable_counter < 2 * RL_MAX_INSTANCE_NUM)
     {
+#ifdef RL_PLATFORM_USING_SOFTIRQ
         if (cpu_id == RL_GET_M_CPU_ID(vector_id))
             HAL_GIC_Enable(rl_set_irq_rm(vector_id));
         else
             HAL_GIC_Enable(rl_set_irq_mr(vector_id));
+#endif
+#ifdef RL_PLATFORM_USING_MBOX
+        if (cpu_id == RL_GET_M_CPU_ID(vector_id))
+            HAL_GIC_Enable(rl_mbox_m_irq(RL_GET_R_CPU_ID(vector_id)));
+        else
+            HAL_GIC_Enable(rl_mbox_r_irq(cpu_id));
+#endif
     }
     platform_global_isr_enable();
     return ((int32_t)vector_id);
@@ -238,10 +371,18 @@ int32_t platform_interrupt_disable(uint32_t vector_id)
     platform_global_isr_disable();
     if (disable_counter < 2 * RL_MAX_INSTANCE_NUM)
     {
+#ifdef RL_PLATFORM_USING_SOFTIRQ
         if (cpu_id == RL_GET_M_CPU_ID(vector_id))
             HAL_GIC_Disable(rl_set_irq_rm(vector_id));
         else
             HAL_GIC_Disable(rl_set_irq_mr(vector_id));
+#endif
+#ifdef RL_PLATFORM_USING_MBOX
+        if (cpu_id == RL_GET_M_CPU_ID(vector_id))
+            HAL_GIC_Disable(rl_mbox_m_irq(RL_GET_R_CPU_ID(vector_id)));
+        else
+            HAL_GIC_Disable(rl_mbox_r_irq(cpu_id));
+#endif
     }
     disable_counter++;
     platform_global_isr_enable();
