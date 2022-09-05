@@ -113,6 +113,8 @@ static void rpmsg_master_cb(struct MBOX_CMD_DAT *msg, void *args)
     uint32_t link_id;
     struct MBOX_CMD_DAT rx_msg = *msg;
 
+    if (rx_msg.DATA != RL_RPMSG_MAGIC)
+        printf("rpmsg master: mailbox data error!\n");
     link_id = rx_msg.CMD & 0xFFU;
     env_isr(RL_GET_VQ_ID(link_id, 0));
 }
@@ -122,6 +124,8 @@ static void rpmsg_remote_cb(struct MBOX_CMD_DAT *msg, void *args)
     uint32_t link_id;
     struct MBOX_CMD_DAT rx_msg = *msg;
 
+    if (rx_msg.DATA != RL_RPMSG_MAGIC)
+        printf("rpmsg master: mailbox data error!\n");
     link_id = rx_msg.CMD & 0xFFU;
 
     if (first_notify == 0)
@@ -270,7 +274,7 @@ void platform_notify(uint32_t vector_id)
 
     link_id = RL_GET_LINK_ID(vector_id);
     tx_msg.CMD = link_id & 0xFFU;
-    tx_msg.DATA = 0xFFFFFFFFU;
+    tx_msg.DATA = RL_RPMSG_MAGIC;
 #endif
 
     cpu_id = HAL_CPU_TOPOLOGY_GetCurrentCpuId();

@@ -26,6 +26,7 @@
 #define RL_PLATFORM_A2B_IRQ_BASE        MBOX0_CH0_A2B_IRQn
 #define RL_PLATFORM_M_IRQ(n)            MBOX0_CH##n##_B2A_IRQn
 #define RL_PLATFORM_R_IRQ(n)            MBOX0_CH##n##_A2B_IRQn
+#define RL_RPMSG_MAGIC                  (0x524D5347U)
 #endif
 
 /*
