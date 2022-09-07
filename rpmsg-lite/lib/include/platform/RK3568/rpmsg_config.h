@@ -14,8 +14,8 @@
 #define RL_PLATFORM_HIGHEST_LINK_ID     (0xFFU)
 
 /* TODO: Select the IPI method according to the actual scene */
-#define RL_PLATFORM_USING_SOFTIRQ
-//#define RL_PLATFORM_USING_MBOX
+//#define RL_PLATFORM_USING_SOFTIRQ
+#define RL_PLATFORM_USING_MBOX
 
 #ifdef RL_PLATFORM_USING_SOFTIRQ
 #define RL_PLATFORM_IRQ_BASE            RPMSG_01_IRQn
