@@ -19,6 +19,10 @@
 #define VRING_SIZE (0x8000UL)
 #endif
 
+#ifndef RL_NS_NAME_SIZE
+#define RL_NS_NAME_SIZE (32)
+#endif
+
 /* size of shared memory + 2*VRING size */
 #define RL_VRING_OVERHEAD (2UL * VRING_SIZE)
 
