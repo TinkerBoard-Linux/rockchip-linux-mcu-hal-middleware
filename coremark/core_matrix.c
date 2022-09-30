@@ -1,53 +1,56 @@
 /*
-Author : Shay Gal-On, EEMBC
+Copyright 2018 Embedded Microprocessor Benchmark Consortium (EEMBC)
 
-This file is part of  EEMBC(R) and CoreMark(TM), which are Copyright (C) 2009
-All rights reserved.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-EEMBC CoreMark Software is a product of EEMBC and is provided under the terms of the
-CoreMark License that is distributed with the official EEMBC COREMARK Software release.
-If you received this EEMBC CoreMark Software without the accompanying CoreMark License,
-you must discontinue use and download the official release from www.coremark.org.
+    http://www.apache.org/licenses/LICENSE-2.0
 
-Also, if you are publicly displaying scores generated from the EEMBC CoreMark software,
-make sure that you are in compliance with Run and Reporting rules specified in the accompanying readme.txt file.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
-EEMBC
-4354 Town Center Blvd. Suite 114-200
-El Dorado Hills, CA, 95762
+Original Author: Shay Gal-on
 */
+
 #include "coremark.h"
 /*
 Topic: Description
-    Matrix manipulation benchmark
+        Matrix manipulation benchmark
 
-    This very simple algorithm forms the basis of many more complex algorithms.
+        This very simple algorithm forms the basis of many more complex
+algorithms.
 
-    The tight inner loop is the focus of many optimizations (compiler as well as hardware based)
-    and is thus relevant for embedded processing.
+        The tight inner loop is the focus of many optimizations (compiler as
+well as hardware based) and is thus relevant for embedded processing.
 
-    The total available data space will be divided to 3 parts:
-    NxN Matrix A - initialized with small values (upper 3/4 of the bits all zero).
-    NxN Matrix B - initialized with medium values (upper half of the bits all zero).
-    NxN Matrix C - used for the result.
+        The total available data space will be divided to 3 parts:
+        NxN Matrix A - initialized with small values (upper 3/4 of the bits all
+zero). NxN Matrix B - initialized with medium values (upper half of the bits all
+zero). NxN Matrix C - used for the result.
 
-    The actual values for A and B must be derived based on input that is not available at compile time.
+        The actual values for A and B must be derived based on input that is not
+available at compile time.
 */
 ee_s16 matrix_test(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B, MATDAT val);
 ee_s16 matrix_sum(ee_u32 N, MATRES *C, MATDAT clipval);
-void matrix_mul_const(ee_u32 N, MATRES *C, MATDAT *A, MATDAT val);
-void matrix_mul_vect(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B);
-void matrix_mul_matrix(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B);
-void matrix_mul_matrix_bitextract(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B);
-void matrix_add_const(ee_u32 N, MATDAT *A, MATDAT val);
+void   matrix_mul_const(ee_u32 N, MATRES *C, MATDAT *A, MATDAT val);
+void   matrix_mul_vect(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B);
+void   matrix_mul_matrix(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B);
+void   matrix_mul_matrix_bitextract(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B);
+void   matrix_add_const(ee_u32 N, MATDAT *A, MATDAT val);
 
-#define matrix_test_next(x) (x+1)
-#define matrix_clip(x,y) ((y) ? (x) & 0x0ff : (x) & 0x0ffff)
-#define matrix_big(x) (0xf000 | (x))
-#define bit_extract(x,from,to) (((x)>>(from)) & (~(0xffffffff << (to))))
+#define matrix_test_next(x)      (x + 1)
+#define matrix_clip(x, y)        ((y) ? (x)&0x0ff : (x)&0x0ffff)
+#define matrix_big(x)            (0xf000 | (x))
+#define bit_extract(x, from, to) (((x) >> (from)) & (~(0xffffffff << (to))))
 
 #if CORE_DEBUG
-void printmat(MATDAT *A, ee_u32 N, char *name)
+void
+printmat(MATDAT *A, ee_u32 N, char *name)
 {
     ee_u32 i, j;
     ee_printf("Matrix %s [%dx%d]:\n", name, N, N);
@@ -62,7 +65,8 @@ void printmat(MATDAT *A, ee_u32 N, char *name)
         ee_printf("\n");
     }
 }
-void printmatC(MATRES *C, ee_u32 N, char *name)
+void
+printmatC(MATRES *C, ee_u32 N, char *name)
 {
     ee_u32 i, j;
     ee_printf("Matrix %s [%dx%d]:\n", name, N, N);
@@ -79,18 +83,19 @@ void printmatC(MATRES *C, ee_u32 N, char *name)
 }
 #endif
 /* Function: core_bench_matrix
-    Benchmark function
+        Benchmark function
 
-    Iterate <matrix_test> N times,
-    changing the matrix values slightly by a constant amount each time.
+        Iterate <matrix_test> N times,
+        changing the matrix values slightly by a constant amount each time.
 */
-ee_u16 core_bench_matrix(mat_params *p, ee_s16 seed, ee_u16 crc)
+ee_u16
+core_bench_matrix(mat_params *p, ee_s16 seed, ee_u16 crc)
 {
-    ee_u32 N = p->N;
-    MATRES *C = p->C;
-    MATDAT *A = p->A;
-    MATDAT *B = p->B;
-    MATDAT val = (MATDAT)seed;
+    ee_u32  N   = p->N;
+    MATRES *C   = p->C;
+    MATDAT *A   = p->A;
+    MATDAT *B   = p->B;
+    MATDAT  val = (MATDAT)seed;
 
     crc = crc16(matrix_test(N, C, A, B, val), crc);
 
@@ -98,32 +103,33 @@ ee_u16 core_bench_matrix(mat_params *p, ee_s16 seed, ee_u16 crc)
 }
 
 /* Function: matrix_test
-    Perform matrix manipulation.
+        Perform matrix manipulation.
 
-    Parameters:
-    N - Dimensions of the matrix.
-    C - memory for result matrix.
-    A - input matrix
-    B - operator matrix (not changed during operations)
+        Parameters:
+        N - Dimensions of the matrix.
+        C - memory for result matrix.
+        A - input matrix
+        B - operator matrix (not changed during operations)
 
-    Returns:
-    A CRC value that captures all results calculated in the function.
-    In particular, crc of the value calculated on the result matrix
-    after each step by <matrix_sum>.
+        Returns:
+        A CRC value that captures all results calculated in the function.
+        In particular, crc of the value calculated on the result matrix
+        after each step by <matrix_sum>.
 
-    Operation:
+        Operation:
 
-    1 - Add a constant value to all elements of a matrix.
-    2 - Multiply a matrix by a constant.
-    3 - Multiply a matrix by a vector.
-    4 - Multiply a matrix by a matrix.
-    5 - Add a constant value to all elements of a matrix.
+        1 - Add a constant value to all elements of a matrix.
+        2 - Multiply a matrix by a constant.
+        3 - Multiply a matrix by a vector.
+        4 - Multiply a matrix by a matrix.
+        5 - Add a constant value to all elements of a matrix.
 
-    After the last step, matrix A is back to original contents.
+        After the last step, matrix A is back to original contents.
 */
-ee_s16 matrix_test(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B, MATDAT val)
+ee_s16
+matrix_test(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B, MATDAT val)
 {
-    ee_u16 crc = 0;
+    ee_u16 crc     = 0;
     MATDAT clipval = matrix_big(val);
 
     matrix_add_const(N, A, val); /* make sure data changes  */
@@ -156,28 +162,30 @@ ee_s16 matrix_test(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B, MATDAT val)
 }
 
 /* Function : matrix_init
-    Initialize the memory block for matrix benchmarking.
+        Initialize the memory block for matrix benchmarking.
 
-    Parameters:
-    blksize - Size of memory to be initialized.
-    memblk - Pointer to memory block.
-    seed - Actual values chosen depend on the seed parameter.
-    p - pointers to <mat_params> containing initialized matrixes.
+        Parameters:
+        blksize - Size of memory to be initialized.
+        memblk - Pointer to memory block.
+        seed - Actual values chosen depend on the seed parameter.
+        p - pointers to <mat_params> containing initialized matrixes.
 
-    Returns:
-    Matrix dimensions.
+        Returns:
+        Matrix dimensions.
 
-    Note:
-    The seed parameter MUST be supplied from a source that cannot be determined at compile time
+        Note:
+        The seed parameter MUST be supplied from a source that cannot be
+   determined at compile time
 */
-ee_u32 core_init_matrix(ee_u32 blksize, void *memblk, ee_s32 seed, mat_params *p)
+ee_u32
+core_init_matrix(ee_u32 blksize, void *memblk, ee_s32 seed, mat_params *p)
 {
-    ee_u32 N = 0;
+    ee_u32  N = 0;
     MATDAT *A;
     MATDAT *B;
-    ee_s32 order = 1;
-    MATDAT val;
-    ee_u32 i = 0, j = 0;
+    ee_s32  order = 1;
+    MATDAT  val;
+    ee_u32  i = 0, j = 0;
     if (seed == 0)
         seed = 1;
     while (j < blksize)
@@ -193,12 +201,12 @@ ee_u32 core_init_matrix(ee_u32 blksize, void *memblk, ee_s32 seed, mat_params *p
     {
         for (j = 0; j < N; j++)
         {
-            seed = ((order * seed) % 65536);
-            val = (seed + order);
-            val = matrix_clip(val, 0);
+            seed         = ((order * seed) % 65536);
+            val          = (seed + order);
+            val          = matrix_clip(val, 0);
             B[i * N + j] = val;
-            val = (val + order);
-            val = matrix_clip(val, 1);
+            val          = (val + order);
+            val          = matrix_clip(val, 1);
             A[i * N + j] = val;
             order++;
         }
@@ -216,16 +224,18 @@ ee_u32 core_init_matrix(ee_u32 blksize, void *memblk, ee_s32 seed, mat_params *p
 }
 
 /* Function: matrix_sum
-    Calculate a function that depends on the values of elements in the matrix.
+        Calculate a function that depends on the values of elements in the
+   matrix.
 
-    For each element, accumulate into a temporary variable.
+        For each element, accumulate into a temporary variable.
 
-    As long as this value is under the parameter clipval,
-    add 1 to the result if the element is bigger then the previous.
+        As long as this value is under the parameter clipval,
+        add 1 to the result if the element is bigger then the previous.
 
-    Otherwise, reset the accumulator and add 10 to the result.
+        Otherwise, reset the accumulator and add 10 to the result.
 */
-ee_s16 matrix_sum(ee_u32 N, MATRES *C, MATDAT clipval)
+ee_s16
+matrix_sum(ee_u32 N, MATRES *C, MATDAT clipval)
 {
     MATRES tmp = 0, prev = 0, cur = 0;
     ee_s16 ret = 0;
@@ -252,10 +262,11 @@ ee_s16 matrix_sum(ee_u32 N, MATRES *C, MATDAT clipval)
 }
 
 /* Function: matrix_mul_const
-    Multiply a matrix by a constant.
-    This could be used as a scaler for instance.
+        Multiply a matrix by a constant.
+        This could be used as a scaler for instance.
 */
-void matrix_mul_const(ee_u32 N, MATRES *C, MATDAT *A, MATDAT val)
+void
+matrix_mul_const(ee_u32 N, MATRES *C, MATDAT *A, MATDAT val)
 {
     ee_u32 i, j;
     for (i = 0; i < N; i++)
@@ -268,9 +279,10 @@ void matrix_mul_const(ee_u32 N, MATRES *C, MATDAT *A, MATDAT val)
 }
 
 /* Function: matrix_add_const
-    Add a constant value to all elements of a matrix.
+        Add a constant value to all elements of a matrix.
 */
-void matrix_add_const(ee_u32 N, MATDAT *A, MATDAT val)
+void
+matrix_add_const(ee_u32 N, MATDAT *A, MATDAT val)
 {
     ee_u32 i, j;
     for (i = 0; i < N; i++)
@@ -283,10 +295,12 @@ void matrix_add_const(ee_u32 N, MATDAT *A, MATDAT val)
 }
 
 /* Function: matrix_mul_vect
-    Multiply a matrix by a vector.
-    This is common in many simple filters (e.g. fir where a vector of coefficients is applied to the matrix.)
+        Multiply a matrix by a vector.
+        This is common in many simple filters (e.g. fir where a vector of
+   coefficients is applied to the matrix.)
 */
-void matrix_mul_vect(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B)
+void
+matrix_mul_vect(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B)
 {
     ee_u32 i, j;
     for (i = 0; i < N; i++)
@@ -300,10 +314,12 @@ void matrix_mul_vect(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B)
 }
 
 /* Function: matrix_mul_matrix
-    Multiply a matrix by a matrix.
-    Basic code is used in many algorithms, mostly with minor changes such as scaling.
+        Multiply a matrix by a matrix.
+        Basic code is used in many algorithms, mostly with minor changes such as
+   scaling.
 */
-void matrix_mul_matrix(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B)
+void
+matrix_mul_matrix(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B)
 {
     ee_u32 i, j, k;
     for (i = 0; i < N; i++)
@@ -320,10 +336,12 @@ void matrix_mul_matrix(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B)
 }
 
 /* Function: matrix_mul_matrix_bitextract
-    Multiply a matrix by a matrix, and extract some bits from the result.
-    Basic code is used in many algorithms, mostly with minor changes such as scaling.
+        Multiply a matrix by a matrix, and extract some bits from the result.
+        Basic code is used in many algorithms, mostly with minor changes such as
+   scaling.
 */
-void matrix_mul_matrix_bitextract(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B)
+void
+matrix_mul_matrix_bitextract(ee_u32 N, MATRES *C, MATDAT *A, MATDAT *B)
 {
     ee_u32 i, j, k;
     for (i = 0; i < N; i++)

@@ -1,73 +1,78 @@
 /*
-Author : Shay Gal-On, EEMBC
+Copyright 2018 Embedded Microprocessor Benchmark Consortium (EEMBC)
 
-This file is part of  EEMBC(R) and CoreMark(TM), which are Copyright (C) 2009
-All rights reserved.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-EEMBC CoreMark Software is a product of EEMBC and is provided under the terms of the
-CoreMark License that is distributed with the official EEMBC COREMARK Software release.
-If you received this EEMBC CoreMark Software without the accompanying CoreMark License,
-you must discontinue use and download the official release from www.coremark.org.
+    http://www.apache.org/licenses/LICENSE-2.0
 
-Also, if you are publicly displaying scores generated from the EEMBC CoreMark software,
-make sure that you are in compliance with Run and Reporting rules specified in the accompanying readme.txt file.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
-EEMBC
-4354 Town Center Blvd. Suite 114-200
-El Dorado Hills, CA, 95762
+Original Author: Shay Gal-on
 */
+
 #include "coremark.h"
 /* Function: get_seed
-    Get a values that cannot be determined at compile time.
+        Get a values that cannot be determined at compile time.
 
-    Since different embedded systems and compilers are used, 3 different methods are provided:
-    1 - Using a volatile variable. This method is only valid if the compiler is forced to generate code that
-    reads the value of a volatile variable from memory at run time.
-    Please note, if using this method, you would need to modify core_portme.c to generate training profile.
-    2 - Command line arguments. This is the preferred method if command line arguments are supported.
-    3 - System function. If none of the first 2 methods is available on the platform,
-    a system function which is not a stub can be used.
+        Since different embedded systems and compilers are used, 3 different
+   methods are provided: 1 - Using a volatile variable. This method is only
+   valid if the compiler is forced to generate code that reads the value of a
+   volatile variable from memory at run time. Please note, if using this method,
+   you would need to modify core_portme.c to generate training profile. 2 -
+   Command line arguments. This is the preferred method if command line
+   arguments are supported. 3 - System function. If none of the first 2 methods
+   is available on the platform, a system function which is not a stub can be
+   used.
 
-    e.g. read the value on GPIO pins connected to switches, or invoke special simulator functions.
+        e.g. read the value on GPIO pins connected to switches, or invoke
+   special simulator functions.
 */
-#if (SEED_METHOD==SEED_VOLATILE)
+#if (SEED_METHOD == SEED_VOLATILE)
 extern volatile ee_s32 seed1_volatile;
 extern volatile ee_s32 seed2_volatile;
 extern volatile ee_s32 seed3_volatile;
 extern volatile ee_s32 seed4_volatile;
 extern volatile ee_s32 seed5_volatile;
-ee_s32 get_seed_32(int i)
+ee_s32
+get_seed_32(int i)
 {
     ee_s32 retval;
     switch (i)
     {
-    case 1:
-        retval = seed1_volatile;
-        break;
-    case 2:
-        retval = seed2_volatile;
-        break;
-    case 3:
-        retval = seed3_volatile;
-        break;
-    case 4:
-        retval = seed4_volatile;
-        break;
-    case 5:
-        retval = seed5_volatile;
-        break;
-    default:
-        retval = 0;
-        break;
+        case 1:
+            retval = seed1_volatile;
+            break;
+        case 2:
+            retval = seed2_volatile;
+            break;
+        case 3:
+            retval = seed3_volatile;
+            break;
+        case 4:
+            retval = seed4_volatile;
+            break;
+        case 5:
+            retval = seed5_volatile;
+            break;
+        default:
+            retval = 0;
+            break;
     }
     return retval;
 }
-#elif (SEED_METHOD==SEED_ARG)
-ee_s32 parseval(char *valstring)
+#elif (SEED_METHOD == SEED_ARG)
+ee_s32
+parseval(char *valstring)
 {
-    ee_s32 retval = 0;
-    ee_s32 neg = 1;
-    int hexmode = 0;
+    ee_s32 retval  = 0;
+    ee_s32 neg     = 1;
+    int    hexmode = 0;
     if (*valstring == '-')
     {
         neg = -1;
@@ -81,7 +86,8 @@ ee_s32 parseval(char *valstring)
     /* first look for digits */
     if (hexmode)
     {
-        while (((*valstring >= '0') && (*valstring <= '9')) || ((*valstring >= 'a') && (*valstring <= 'f')))
+        while (((*valstring >= '0') && (*valstring <= '9'))
+               || ((*valstring >= 'a') && (*valstring <= 'f')))
         {
             ee_s32 digit = *valstring - '0';
             if (digit > 9)
@@ -111,48 +117,52 @@ ee_s32 parseval(char *valstring)
     return retval;
 }
 
-ee_s32 get_seed_args(int i, int argc, char *argv[])
+ee_s32
+get_seed_args(int i, int argc, char *argv[])
 {
     if (argc > i)
         return parseval(argv[i]);
     return 0;
 }
 
-#elif (SEED_METHOD==SEED_FUNC)
-/* If using OS based function, you must define and implement the functions below in core_portme.h and core_portme.c ! */
-ee_s32 get_seed_32(int i)
+#elif (SEED_METHOD == SEED_FUNC)
+/* If using OS based function, you must define and implement the functions below
+ * in core_portme.h and core_portme.c ! */
+ee_s32
+get_seed_32(int i)
 {
     ee_s32 retval;
     switch (i)
     {
-    case 1:
-        retval = portme_sys1();
-        break;
-    case 2:
-        retval = portme_sys2();
-        break;
-    case 3:
-        retval = portme_sys3();
-        break;
-    case 4:
-        retval = portme_sys4();
-        break;
-    case 5:
-        retval = portme_sys5();
-        break;
-    default:
-        retval = 0;
-        break;
+        case 1:
+            retval = portme_sys1();
+            break;
+        case 2:
+            retval = portme_sys2();
+            break;
+        case 3:
+            retval = portme_sys3();
+            break;
+        case 4:
+            retval = portme_sys4();
+            break;
+        case 5:
+            retval = portme_sys5();
+            break;
+        default:
+            retval = 0;
+            break;
     }
     return retval;
 }
 #endif
 
 /* Function: crc*
-    Service functions to calculate 16b CRC code.
+        Service functions to calculate 16b CRC code.
 
 */
-ee_u16 crcu8(ee_u8 data, ee_u16 crc)
+ee_u16
+crcu8(ee_u8 data, ee_u16 crc)
 {
     ee_u8 i = 0, x16 = 0, carry = 0;
 
@@ -176,24 +186,28 @@ ee_u16 crcu8(ee_u8 data, ee_u16 crc)
     }
     return crc;
 }
-ee_u16 crcu16(ee_u16 newval, ee_u16 crc)
+ee_u16
+crcu16(ee_u16 newval, ee_u16 crc)
 {
     crc = crcu8((ee_u8)(newval), crc);
     crc = crcu8((ee_u8)((newval) >> 8), crc);
     return crc;
 }
-ee_u16 crcu32(ee_u32 newval, ee_u16 crc)
+ee_u16
+crcu32(ee_u32 newval, ee_u16 crc)
 {
-    crc = crc16((ee_s16) newval, crc);
+    crc = crc16((ee_s16)newval, crc);
     crc = crc16((ee_s16)(newval >> 16), crc);
     return crc;
 }
-ee_u16 crc16(ee_s16 newval, ee_u16 crc)
+ee_u16
+crc16(ee_s16 newval, ee_u16 crc)
 {
     return crcu16((ee_u16)newval, crc);
 }
 
-ee_u8 check_data_types()
+ee_u8
+check_data_types()
 {
     ee_u8 retval = 0;
     if (sizeof(ee_u8) != 1)
@@ -223,7 +237,8 @@ ee_u8 check_data_types()
     }
     if (sizeof(ee_ptr_int) != sizeof(int *))
     {
-        ee_printf("ERROR: ee_ptr_int is not a datatype that holds an int pointer!\n");
+        ee_printf(
+            "ERROR: ee_ptr_int is not a datatype that holds an int pointer!\n");
         retval++;
     }
     if (retval > 0)
