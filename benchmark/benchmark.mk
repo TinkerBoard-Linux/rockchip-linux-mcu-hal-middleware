@@ -8,8 +8,10 @@ INCLUDES += \
 -I"$(BENCHMARK_PATH)" \
 -I"$(BENCHMARK_PATH)/coremark" \
 -I"$(BENCHMARK_PATH)/coremark/barebones" \
+-I"$(BENCHMARK_PATH)/linpack" \
 
 SRC_DIRS += \
     $(BENCHMARK_PATH) \
     $(BENCHMARK_PATH)/coremark \
     $(BENCHMARK_PATH)/coremark/barebones \
+    $(BENCHMARK_PATH)/linpack \

@@ -6,6 +6,7 @@
 #define BENCHMARK_CONFIG_H_
 
 #define HAL_BENCHMARK_COREMARK
+#define HAL_BENCHMARK_LINPACK
 
 void benchmark_main(void);
 

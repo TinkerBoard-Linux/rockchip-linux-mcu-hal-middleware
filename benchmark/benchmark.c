@@ -10,6 +10,10 @@
 extern void coremark_main(void);
 #endif
 
+#ifdef HAL_BENCHMARK_LINPACK
+extern void linpack_main(void);
+#endif
+
 void benchmark_main(void)
 {
     printf("benchmark start:\n");
@@ -18,6 +22,12 @@ void benchmark_main(void)
     printf("coremark start:\n");
     coremark_main();
     printf("coremark end.\n");
+#endif
+
+#ifdef HAL_BENCHMARK_LINPACK
+    printf("linpack start:\n");
+    linpack_main();
+    printf("linpack end.\n");
 #endif
 
     printf("benchmark end.\n");
