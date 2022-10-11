@@ -14,6 +14,10 @@ extern void coremark_main(void);
 extern void linpack_main(void);
 #endif
 
+#ifdef HAL_BENCHMARK_TINYMEMBENCH
+extern void tinymembench_main(void);
+#endif
+
 void benchmark_main(void)
 {
     printf("benchmark start:\n");
@@ -28,6 +32,12 @@ void benchmark_main(void)
     printf("linpack start:\n");
     linpack_main();
     printf("linpack end.\n");
+#endif
+
+#ifdef HAL_BENCHMARK_TINYMEMBENCH
+    printf("tinymembench start:\n");
+    tinymembench_main();
+    printf("tinymembench end.\n");
 #endif
 
     printf("benchmark end.\n");
