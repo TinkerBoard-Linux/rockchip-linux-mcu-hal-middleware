@@ -125,7 +125,7 @@ static void rpmsg_remote_cb(struct MBOX_CMD_DAT *msg, void *args)
     struct MBOX_CMD_DAT rx_msg = *msg;
 
     if (rx_msg.DATA != RL_RPMSG_MAGIC)
-        printf("rpmsg master: mailbox data error!\n");
+        printf("rpmsg remote: mailbox data error!\n");
     link_id = rx_msg.CMD & 0xFFU;
 
     if (first_notify == 0)
