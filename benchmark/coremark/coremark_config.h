@@ -6,8 +6,11 @@
 #define COREMARK_CONFIG_H_
 
 #define COMPILER_FLAGS "-mcpu=cortex-a55"
-
 #define ITERATIONS 0
+
+//#define COMPILER_FLAGS "-mcpu=cortex-m0"
+//#define MEM_METHOD MEM_MALLOC
+//#define ITERATIONS 600
 
 #define MAIN_HAS_NOARGC 1
 #define MAIN_HAS_NORETURN 1
