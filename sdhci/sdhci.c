@@ -271,19 +271,19 @@ static int sdhci_setup_adma(SdhciHost *host, MmcData *data)
 		buffer_data += desc_length;
 	}
 
-	/*dcache_clean_invalidate_by_mva(data->dest,
-				       data->blocks * data->blocksize);*/
+	HAL_DCACHE_CleanInvalidateByRange(data->dest,
+				       data->blocks * data->blocksize);
 
 	if (host->dma64) {
-		/*dcache_clean_invalidate_by_mva(host->adma64_descs,
+		HAL_DCACHE_CleanInvalidateByRange(host->adma64_descs,
 					       host->adma_desc_count *
-					       sizeof(*host->adma64_descs));*/
+					       sizeof(*host->adma64_descs));
 		sdhci_writel(host, (uintptr_t) host->adma64_descs,
 			     SDHCI_ADMA_ADDRESS);
 	} else {
-		/*dcache_clean_invalidate_by_mva(host->adma_descs,
+		HAL_DCACHE_CleanInvalidateByRange(host->adma_descs,
 					       host->adma_desc_count *
-					       sizeof(*host->adma_descs));*/
+					       sizeof(*host->adma_descs));
 		sdhci_writel(host, (uintptr_t) host->adma_descs,
 			     SDHCI_ADMA_ADDRESS);
 	}
@@ -333,8 +333,8 @@ static int sdhci_complete_adma(SdhciHost *host, MmcCommand *cmd, MmcData *data)
 
 		if (retry && !(stat & SDHCI_INT_ERROR)) {
 			sdhci_cmd_done(host, cmd);
-			/*if (data->flags & MMC_DATA_READ)
-				dcache_invalidate_by_mva(data->dest, data_len);*/
+			if (data->flags & MMC_DATA_READ)
+				HAL_DCACHE_InvalidateByRange(data->dest, data_len);
 			return 0;
 		}
 	}
