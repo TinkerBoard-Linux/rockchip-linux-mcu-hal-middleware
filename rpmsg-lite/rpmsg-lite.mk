@@ -14,6 +14,7 @@ SRC_DIRS += \
     $(RPMSG_LITE_PATH)/common \
     $(RPMSG_LITE_PATH)/rpmsg_lite \
     $(RPMSG_LITE_PATH)/rpmsg_lite/porting/platform/$(SOC) \
+    $(RPMSG_LITE_PATH)/init/platform/$(SOC) \
     $(RPMSG_LITE_PATH)/virtio \
     $(RPMSG_LITE_PATH)/test \
 
