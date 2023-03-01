@@ -19,10 +19,6 @@ extern uint32_t __share_rpmsg_end__[];
 /* RPMSG instance buffer size */
 #define RPMSG_POOL_SIZE (2UL * RL_VRING_OVERHEAD)
 
-/* RPMSG endpoint addr covert */
-#define EPT_M2R_ADDR(addr) (addr + VRING_SIZE)   // master to remote covert
-#define EPT_R2M_ADDR(addr) (addr - VRING_SIZE)   // remote to master covert
-
 static uint32_t remote_table[3] =
 {
     REMOTE_ID_2,
