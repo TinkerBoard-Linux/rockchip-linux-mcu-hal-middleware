@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include "hal_base.h"
 #include "simple_console.h"
+#include "command_io.h"
 
 #define BIT(x) (1U << (x))
 
@@ -561,6 +562,7 @@ int console_init(struct HAL_UART_DEV *uart,
 
     console_add_command(&command_help);
     console_add_command(&command_history);
+    console_add_command(&command_io);
 
     return 0;
 }
