@@ -7,10 +7,12 @@
 
 /* Configuration for ARM Cortex-A55 */
 #define COMPILER_FLAGS "-mcpu=cortex-a55"
-#define ITERATIONS 0
 
 /* Configuration for ARM Cortex-M0 */
 //#define COMPILER_FLAGS "-mcpu=cortex-m0"
+
+#define ITERATIONS 0
+/* Configuration for uncache */
 //#define ITERATIONS 500
 
 #define MAIN_HAS_NOARGC 1
