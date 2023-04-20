@@ -139,6 +139,28 @@ static void console_cursor_move_right(struct console_dev *console, int move)
     }
 }
 
+static void console_spec_del(struct console_dev *console)
+{
+    struct console_buffers *bufs = &console->bufs;
+    uint8_t *buffer = bufs->buf[bufs->line];
+
+    if ((!bufs->index) && (bufs->index == bufs->len)) {
+        return;
+    }
+
+    HAL_UART_SerialOut(console->uart_dev->pReg,
+                       &buffer[bufs->index + 1],
+                       bufs->len - bufs->index - 1);
+    HAL_UART_SerialOutChar(console->uart_dev->pReg, ' ');
+    console_cursor_move_right(console, -(bufs->len - bufs->index));
+
+    memmove(buffer + bufs->index,
+            buffer + bufs->index + 1,
+            bufs->len - bufs->index - 1);
+
+    bufs->len--;
+}
+
 static void console_spec_backspace(struct console_dev *console)
 {
     struct console_buffers *bufs = &console->bufs;
@@ -257,6 +279,9 @@ static void console_csi_char(struct console_dev *console, uint8_t c)
             break;
         case '4':           /* End */
             console_spec_end(console);
+            break;
+        case '3':
+            console_spec_del(console);
             break;
         default:
             printf("No support now (CSI 0x%2llx ~)\n", console->bufs.csi);
