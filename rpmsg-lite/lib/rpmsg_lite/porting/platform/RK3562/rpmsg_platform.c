@@ -387,6 +387,9 @@ uint32_t platform_vatopa(void *addr)
  */
 void *platform_patova(uint32_t addr)
 {
+#ifdef HAL_MCU_CORE
+    addr -= RL_PHY_MCU_OFFSET;
+#endif
     return ((void *)(char *)addr);
 }
 

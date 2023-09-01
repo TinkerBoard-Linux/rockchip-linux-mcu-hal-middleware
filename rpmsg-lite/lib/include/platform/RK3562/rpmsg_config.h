@@ -5,6 +5,8 @@
 #ifndef RPMSG_CONFIG_H_
 #define RPMSG_CONFIG_H_
 
+#include "hal_conf.h"
+
 #define RL_BUFFER_PAYLOAD_SIZE (496U)
 #define RL_BUFFER_COUNT (64U)
 /* endpoint size is formed by payload and struct rpmsg_std_hdr */
@@ -18,6 +20,15 @@
 
 #ifdef RL_PLATFORM_USING_MBOX
 #define RL_RPMSG_MAGIC                  (0x524D5347U)
+#endif
+
+#ifdef HAL_MCU_CORE
+/* MCU offset address */
+#ifdef HAL_CACHE_DECODED_ADDR_BASE
+#define RL_PHY_MCU_OFFSET HAL_CACHE_DECODED_ADDR_BASE
+#else
+#define RL_PHY_MCU_OFFSET (0U)
+#endif
 #endif
 
 /*
