@@ -94,12 +94,12 @@ static void rpmsg_remote_isr(int irqn, void *param)
 
 static void platform_global_isr_disable(void)
 {
-    __asm volatile("cpsid i");
+    __disable_irq();
 }
 
 static void platform_global_isr_enable(void)
 {
-    __asm volatile("cpsie i");
+    __enable_irq();
 }
 
 int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
