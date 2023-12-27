@@ -1,25 +1,8 @@
-/*********************************************************************
-Copyright (C) [2018] Fuzhou Rockchip Electronics Co., Ltd. All rights
-reserved.
-BY DOWNLOADING, INSTALLING, COPYING, SAVING OR OTHERWISE USING THIS
-SOFTWARE, YOU ACKNOWLEDGE THAT YOU AGREE THE SOFTWARE RECEIVED FORM
-ROCKCHIP IS PROVIDED TO YOU ON AN "AS IS" BASIS and ROCKCHP DISCLAIMS
-ANY AND ALL WARRANTIES AND REPRESENTATIONS WITH RESPECT TO SUCH FILE,
-WHETHER EXPRESS, IMPLIED, STATUTORY OR OTHERWISE, INCLUDING WITHOUT
-LIMITATION, ANY IMPLIED WARRANTIES OF TITLE, NON-INFRINGEMENT,
-MERCHANTABILITY, SATISFACTROY QUALITY, ACCURACY OR FITNESS FOR A
-PARTICULAR PURPOSE.
-
-Rockchip hereby grants to you a limited, non-exclusive,
-non-sublicensable and non-transferable license (a) to install, save,
-copy and modify the Software; (b) to distribute the Software with
-modification in binary code format only.
-
-Except as expressively authorized by Rockchip in writing, you may NOT:
-(a) distribute the Software with or without modification in source code;
-(b) remove or obscure any copyright, patent, or trademark statement or
-    notices contained in the Software.
-*********************************************************************/
+/* SPDX-License-Identifier: BSD-3-Clause */
+/*
+ * Copyright (c) 2023 Rockchip Electronics Co., Ltd.
+ *
+ */
 
 #ifndef _SDM_API_
 #define _SDM_API_
@@ -68,7 +51,7 @@ Except as expressively authorized by Rockchip in writing, you may NOT:
 
 void sdmmc_init(void *base_reg);
 int32_t sdmmc_ioctrl(uint32_t cmd, void *param);
-int32_t sdmmc_write(uint32_t start, uint32_t count, void *buffer);
+int32_t sdmmc_write(uint32_t start, uint32_t count, const void *buffer);
 int32_t sdmmc_read(uint32_t start, uint32_t count, void *buffer);
 int32_t sdmmc_open(void);
 

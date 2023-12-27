@@ -1,28 +1,7 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
- * Copyright 2008, Freescale Semiconductor, Inc
- * Andy Fleming
+ * Copyright (c) 2023 Rockchip Electronics Co., Ltd.
  *
- * Copyright 2013 Google Inc.  All rights reserved.
- *
- * Based vaguely on the Linux code
- *
- * See file CREDITS for list of people who contributed to this
- * project.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation; either version 2 of
- * the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
- * MA 02111-1307 USA
  */
 
 #include "blockdev.h"
@@ -30,11 +9,20 @@
 #include "sdhci.h"
 #include "mmc_api.h"
 
-//#define CONFIG_ENHANCE_STROBE
+//#define CONFIG_MMC_H400ES
 //#define CONFIG_MMC_H400
+//#define DISABLE_MMC_H400ES
+
+#ifdef DISABLE_MMC_H400ES
+#undef CONFIG_MMC_H400ES
+#endif
+
 #define CONFIG_MMC_H200
 #define CONFIG_MMC_CLK_MAX      200*1000*1000
 //#define CONFIG_MMC_CLK_24MHZ
+#define CONFIG_MMC_BUS_WIDTH	EXT_CSD_BUS_WIDTH_8
+#define CONFIG_MMC_DRIVER_TYPE	0
+
 
 /* Set block count limit because of 16 bit register limit on some hardware*/
 #ifndef CONFIG_SYS_MMC_MAX_BLK_COUNT
@@ -61,10 +49,11 @@ typedef __SIZE_TYPE__ ssize_t;
 #ifdef DRIVERS_SDHCI
 
 extern unsigned int SetEmmcClk(unsigned int clock);
+
 static inline uint32_t swap_bytes32(uint32_t in)
 {
 	return ((in & 0xFF) << 24) | ((in & 0xFF00) << 8) |
-		((in & 0xFF0000) >> 8) | ((in & 0xFF000000) >> 24);
+	       ((in & 0xFF0000) >> 8) | ((in & 0xFF000000) >> 24);
 }
 
 #define htobe32(in) swap_bytes32(in)
@@ -274,6 +263,15 @@ static uint32_t mmc_write(MmcMedia *media, uint32_t start, lba_t block_count,
 
 	if (mmc_send_cmd(media->ctrlr, &cmd, &data)) {
 		mmc_error("mmc write failed\n", "");
+
+		cmd.cmdidx = MMC_CMD_STOP_TRANSMISSION;
+		cmd.cmdarg = 0;
+		cmd.resp_type = MMC_RSP_R1b;
+		cmd.flags = 0;
+
+		if (mmc_send_cmd(media->ctrlr, &cmd, NULL))
+			mmc_error("mmc fail to send stop cmd\n", "");
+
 		return 0;
 	}
 
@@ -373,6 +371,7 @@ static int mmc_go_idle(MmcMedia *media)
 	if (err)
 		return err;
 
+	udelay(100);
 	return 0;
 }
 
@@ -408,7 +407,7 @@ static int mmc_send_op_cond(MmcMedia *media)
 	int i;
 
 	/* Some cards seem to need this */
-	mmc_go_idle(media);
+	//mmc_go_idle(media);
 
 	/* Devices with hardcoded voltage do not need second iteration. */
 	cmd.cmdarg = media->ctrlr->hardcoded_voltage;
@@ -568,6 +567,122 @@ static int mmc_hs200_tuning(MmcCtrlr *ctrlr)
 	return err;
 }
 
+int mmc_calc_rx_tap(int err, int8 s_tap, int start)
+{
+	static int8 tap[64];
+	static int cur_win = -1;
+	int i, n, max_win;
+
+	if (1 == start) {
+		memset(tap, -1, sizeof(tap));
+		cur_win = -1;
+	}
+
+	//PRINT_E("%s %d %d %d\n", __func__, err, s_tap, cur_win);
+	if (!err) {
+		if (-1 == cur_win)
+			cur_win = 0;
+
+		if (-1 == tap[cur_win]) {
+			tap[cur_win] = (int8)s_tap;
+			tap[cur_win+1] = 1;
+		}
+		else
+			tap[cur_win+1]++;
+	}
+	else {
+		if ((-1 != cur_win) && (-1 != tap[cur_win])){
+			cur_win += 2;
+		}
+	}
+
+	max_win = -1;
+	if (-1 != cur_win) {
+		n = 0;
+		for (i = 0; i < cur_win+1; i += 2) {
+			if (-1 == tap[i])
+				break;
+
+			if (tap[i+1] > n) {
+				n = tap[i+1];
+				max_win = i;
+			}
+		}
+	}
+
+	if (-1 != max_win) {
+		return (tap[max_win] + tap[max_win+1]/2);
+	}
+
+	return -1;
+}
+
+#define EMMC_DLL_RXCLK	 0x804
+#define EMMC_DLL_TXCLK	 0x808
+#define EMMC_DLL_STATUS1 0x844
+
+#define EMMC_DLL_CMDOUT 0x810
+
+extern int dump_ahci_reg(char *s, int index);
+extern int sdhci_enable_clock(int en);
+
+static const u8 tuning_blk_pattern_8bit[] = {
+	0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00,
+	0xff, 0xff, 0xcc, 0xcc, 0xcc, 0x33, 0xcc, 0xcc,
+	0xcc, 0x33, 0x33, 0xcc, 0xcc, 0xcc, 0xff, 0xff,
+	0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee, 0xff,
+	0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd, 0xdd,
+	0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff, 0xbb,
+	0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff, 0xff,
+	0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee, 0xff,
+	0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00,
+	0x00, 0xff, 0xff, 0xcc, 0xcc, 0xcc, 0x33, 0xcc,
+	0xcc, 0xcc, 0x33, 0x33, 0xcc, 0xcc, 0xcc, 0xff,
+	0xff, 0xff, 0xee, 0xff, 0xff, 0xff, 0xee, 0xee,
+	0xff, 0xff, 0xff, 0xdd, 0xff, 0xff, 0xff, 0xdd,
+	0xdd, 0xff, 0xff, 0xff, 0xbb, 0xff, 0xff, 0xff,
+	0xbb, 0xbb, 0xff, 0xff, 0xff, 0x77, 0xff, 0xff,
+	0xff, 0x77, 0x77, 0xff, 0x77, 0xbb, 0xdd, 0xee,
+};
+
+int mmc_send_tuning(MmcMedia *media)
+{
+	const u8 *tuning_block_pattern;
+	int size, err = 0;
+	MmcCommand cmd;
+	MmcData data;
+
+	ALLOC_CACHE_ALIGN_BUFFER(unsigned char, data_buf, 512);
+
+	//if (mmc->bus_width == MMC_BUS_WIDTH_8BIT) {
+		tuning_block_pattern = tuning_blk_pattern_8bit;
+		size = sizeof(tuning_blk_pattern_8bit);
+	//}  else {
+	//	return -EINVAL;
+	//}
+
+	cmd.cmdidx = MMC_SEND_TUNING_BLOCK_HS200;
+	cmd.resp_type = MMC_RSP_R1;
+	cmd.cmdarg = 0;
+	cmd.flags = 0;
+
+	data.dest = (char *)data_buf;
+	data.blocksize = size;
+	data.blocks = 1;
+	data.flags = MMC_DATA_READ;
+
+	err = mmc_send_cmd(media->ctrlr, &cmd, &data);
+	if (err)
+		goto out;
+
+	if (memcmp(data_buf, tuning_block_pattern, size))
+		err = -5;
+out:
+	return err;
+}
+
+extern int sdhci_send_tuning(MmcCtrlr *mmc_ctrlr, u32 opcode);
+
 static int mmc_select_hs400es(MmcMedia *media)
 {
 	MmcCtrlr *ctrlr = media->ctrlr;
@@ -605,7 +720,7 @@ static int mmc_select_hs400es(MmcMedia *media)
 	}
 
 	/* Switch card to HS400 */
-	val = EXT_CSD_TIMING_HS400;
+	val = EXT_CSD_TIMING_HS400 | (media->sel_drv_type<<4);
 	err = mmc_switch(media, EXT_CSD_CMD_SET_NORMAL,
 			 EXT_CSD_HS_TIMING, val);
 
@@ -670,7 +785,7 @@ static int mmc_select_hs400(MmcMedia *media)
 	}
 
 	/* Switch card to HS400 */
-	val = EXT_CSD_TIMING_HS400;
+	val = EXT_CSD_TIMING_HS400 | (media->sel_drv_type<<4);
 	err = mmc_switch(media, EXT_CSD_CMD_SET_NORMAL,
 			 EXT_CSD_HS_TIMING, val);
 
@@ -797,7 +912,9 @@ static void mmc_select_card_type(MmcMedia *media)
 	    card_type & EXT_CSD_CARD_TYPE_HS400_1_8V) {
 		avail_type |= MMC_HS_400MHZ;
 	}
+#endif
 
+#ifdef CONFIG_MMC_H400ES
 	if (media->strobe_support &&
 	    (card_type & EXT_CSD_CARD_TYPE_HS400))
 		avail_type |= MMC_HS_HS400ES;
@@ -805,6 +922,23 @@ static void mmc_select_card_type(MmcMedia *media)
 #endif
 
 	media->mmc_avail_type = avail_type;
+}
+
+static void mmc_select_driver_type(MmcMedia *media)
+{
+#if (CONFIG_MMC_DRIVER_TYPE == 4)
+	if (media->avail_driver_type & BIT(4))
+		media->sel_drv_type = 4;
+	else
+		media->sel_drv_type = 0;
+#elif (CONFIG_MMC_DRIVER_TYPE == 1)
+	if (media->avail_driver_type & BIT(1))
+		media->sel_drv_type = 1;
+	else
+		media->sel_drv_type = 0;
+#else
+	media->sel_drv_type = 0;
+#endif
 }
 
 static int mmc_change_freq(MmcMedia *media)
@@ -827,28 +961,32 @@ static int mmc_change_freq(MmcMedia *media)
 
 	media->raw_card_type = ext_csd[EXT_CSD_CARD_TYPE] & 0x5f;
 
-#ifdef CONFIG_ENHANCE_STROBE
+#ifdef CONFIG_MMC_H400ES
 	media->strobe_support = ext_csd[EXT_CSD_STROBE_SUPPORT];
 #endif
+	media->avail_driver_type = ext_csd[197] & 0x1F;
+	//PRINT_E("driver_type:0x%x\n", media->driver_type);
 
 	mmc_select_card_type(media);
 
 	cardtype = media->mmc_avail_type;
 	mmc_debug("mmc info: raw_card_type=0x%x,mmc_avail_type=0x%x\n", media->raw_card_type, cardtype);
 
+	mmc_select_driver_type(media);
+
 	if (cardtype & MMC_HS_HS400ES) {
 		err = mmc_select_hs400es(media);
 	} else if (cardtype & MMC_HS_200MHZ) {
 		/* Switch to 8-bit since HS200 only support 8-bit bus width */
 		err = mmc_switch(media, EXT_CSD_CMD_SET_NORMAL,
-				 EXT_CSD_BUS_WIDTH, EXT_CSD_BUS_WIDTH_8);
+				 EXT_CSD_BUS_WIDTH, CONFIG_MMC_BUS_WIDTH);
 
 		if (err)
 			return err;
 
 		/* Switch to HS200 */
 		err = mmc_switch(media, EXT_CSD_CMD_SET_NORMAL,
-				 EXT_CSD_HS_TIMING, 0x2);
+				 EXT_CSD_HS_TIMING, 0x2 | (media->sel_drv_type<<4));
 
 		if (err)
 			return err;
@@ -856,8 +994,8 @@ static int mmc_change_freq(MmcMedia *media)
 		mmc_set_timing(media->ctrlr, MMC_TIMING_MMC_HS200);
 
 		/* Adjust Host Bus Wisth to 8-bit */
-		mmc_set_bus_width(media->ctrlr, 8);
-		media->caps |= EXT_CSD_BUS_WIDTH_8;
+		mmc_set_bus_width(media->ctrlr, 4 * CONFIG_MMC_BUS_WIDTH);
+		media->caps |= CONFIG_MMC_BUS_WIDTH;
 	} else {
 		err = mmc_switch(media, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_HS_TIMING, 1);
@@ -1224,6 +1362,7 @@ static int mmc_startup(MmcMedia *media)
 				media->capacity = capacity;
 
 			mmc_debug("mmc media info: capacity=%d\n", (u32)(media->capacity >> 9));
+			memcpy(media->ext_csd, ext_csd, sizeof(media->ext_csd));
 		}
 	}
 
@@ -1282,9 +1421,9 @@ static int mmc_startup(MmcMedia *media)
 
 		mmc_set_clock(media->ctrlr, clock);
 	} else {
-		for (width = EXT_CSD_BUS_WIDTH_8; width >= 0; width--) {
+		for (width = CONFIG_MMC_BUS_WIDTH; width >= 0; width--) {
 			/* If HS200 is switched, Bus Width has been 8-bit */
-			if (media->caps & EXT_CSD_BUS_WIDTH_8)
+			if (media->caps & CONFIG_MMC_BUS_WIDTH)
 				break;
 
 			/* Set the card to use 4 bit*/
@@ -1321,9 +1460,14 @@ static int mmc_startup(MmcMedia *media)
 
 	if (media->caps & MMC_MODE_HS_200MHz) {
 		err = mmc_hs200_tuning(media->ctrlr);
-
 		if (err)
 			return err;
+
+#ifdef CONFIG_MMC_H400
+		err = mmc_select_hs400(media);
+		if (err)
+			return err;
+#endif
 	}
 
 	media->dev.block_count = media->capacity / media->read_bl_len;
@@ -1515,32 +1659,6 @@ lba_t block_mmc_write(BlockDevOps *me, lba_t start, lba_t count,
 	return count;
 }
 
-unsigned int SetEmmcClk(unsigned int clock)
-{
-	unsigned int clk_sel, cclk_emmc;
-
-	if (clock == 0)
-		return 0;
-
-	if (clock >= 200000000) {
-		clk_sel = 1;
-	} else if (clock >= 150000000) {
-		clk_sel = 2;
-	} else if (clock >= 100000000) {
-		clk_sel = 3;
-	} else if (clock >= 50000000) {
-		clk_sel = 4;
-	} else if (clock >= 24000000) {
-		clk_sel = 0;
-	} else {
-		clk_sel = 5; /* 375KHZ*/
-	}
-
-	PRINT_E("SetEmmcClk: %d, %d\n", clock, clk_sel);
-	CRU->CRU_CLKSEL_CON[28] = ((7 << 12) << 16) | (clk_sel << 12);
-
-	return clock;
-}
 
 SdhciHost *new_mem_sdhci_host(void *ioaddr, int platform_info,
 			      int clock_min, int clock_max, int clock_base)
@@ -1617,7 +1735,7 @@ int32_t sdmmc_read(uint32_t start, uint32_t count, void *buffer)
 		return SDM_FALSE;
 }
 
-int32_t sdmmc_write(uint32_t start, uint32_t count, void *buffer)
+int32_t sdmmc_write(uint32_t start, uint32_t count, const void *buffer)
 {
 	lba_t ret;
 

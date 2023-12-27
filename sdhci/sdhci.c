@@ -1,27 +1,7 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
- * Copyright 2011, Marvell Semiconductor Inc.
- * Lei Wen <leiwen@marvell.com>
+ * Copyright (c) 2023 Rockchip Electronics Co., Ltd.
  *
- * See file CREDITS for list of people who contributed to this
- * project.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation; either version 2 of
- * the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
- * MA 02111-1307 USA
- *
- * Back ported to the 8xx platform (from the 8260 platform) by
- * Murray.Jensen@cmst.csiro.au, 27-Jan-01.
  */
 
 #include "blockdev.h"
@@ -31,8 +11,10 @@
 
 #define SDHCI_ARASAN_VENDOR_REGISTER	0x78
 #define VENDOR_ENHANCED_STROBE		BIT(0)
+#define EMMC_EMMC_CTRL				0x52C
 
 extern inline SdhciHost *mmc_get_host(void);
+extern int ConfigMMCPHY(SdhciHost *host,uint32 clock, uint32 timing);
 
 #define MAX_TUNING_LOOP 40
 #define SDHCI_MAX_NUM_DESCS     2048
@@ -49,7 +31,7 @@ static inline void mmc_retune_needed(SdhciHost *host)
 	mmc_debug("can_retune:%d, need_retune:%d\n", host->mmc_ctrlr.can_retune, host->mmc_ctrlr.need_retune);
 }
 
-static void sdhci_reset(SdhciHost *host, u8 mask)
+void sdhci_reset(SdhciHost *host, u8 mask)
 {
 	unsigned long timeout;
 
@@ -66,6 +48,41 @@ static void sdhci_reset(SdhciHost *host, u8 mask)
 		timeout--;
 		udelay(1);
 	}
+}
+
+int sdhci_enable_clock(int en)
+{
+	unsigned int div, clk, timeout;
+	SdhciHost *host = mmc_get_host();
+
+	clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	//PRINT_E("sdhci_enable_clock2:%d, 0x%x\n", en, clk);
+
+	if (0 == en) {
+		sdhci_writew(host, 0, SDHCI_CLOCK_CONTROL);
+		return 0;
+	}
+
+	clk = SDHCI_CLOCK_INT_EN;
+	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+
+	/* Wait max 20 ms */
+	timeout = 20000;
+	while (!((clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL))
+		 & SDHCI_CLOCK_INT_STABLE)) {
+		if (timeout == 0) {
+			PRINT_E("Internal clock never stabilised.\n", "");
+			return -1;
+		}
+
+		timeout--;
+		udelay(1);
+	}
+
+	clk |= SDHCI_CLOCK_CARD_EN;
+	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+
+	return 0;
 }
 
 static void sdhci_cmd_done(SdhciHost *host, MmcCommand *cmd)
@@ -106,7 +123,14 @@ static int sdhci_transfer_data(SdhciHost *host, MmcData *data,
 			       unsigned int start_addr)
 {
 	unsigned int stat, rdy, mask, timeout, block = 0;
-	u32 command;
+	bool transfer_done = false;
+
+#ifdef CONFIG_MMC_SDHCI_SDMA
+	unsigned char ctrl;
+	ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
+	ctrl &= ~SDHCI_CTRL_DMA_MASK;
+	sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+#endif
 
 	timeout = 1000000;
 	rdy = SDHCI_INT_SPACE_AVAIL | SDHCI_INT_DATA_AVAIL;
@@ -120,18 +144,19 @@ static int sdhci_transfer_data(SdhciHost *host, MmcData *data,
 			return -1;
 		}
 
-		if (stat & rdy) {
+		if (!transfer_done && (stat & rdy)) {
 			if (!(sdhci_readl(host, SDHCI_PRESENT_STATE) & mask))
 				continue;
 
 			sdhci_writel(host, rdy, SDHCI_INT_STATUS);
 
 			if (stat & SDHCI_INT_DATA_AVAIL) {
-				command = SDHCI_GET_CMD(sdhci_readw(host, SDHCI_COMMAND));
+				u32 command;
 
+				command = SDHCI_GET_CMD(sdhci_readw(host, SDHCI_COMMAND));
 				if (command == MMC_SEND_TUNING_BLOCK_HS200) {
 					host->tuning_done = 1;
-					mmc_debug("tuning_done stat:0x%x\n", stat);
+					mmc_debug("auto_tuning_done stat:0x%x\n", stat);
 					//wake_up(&host->buf_ready_int);
 					return 0;
 				}
@@ -139,15 +164,25 @@ static int sdhci_transfer_data(SdhciHost *host, MmcData *data,
 
 			sdhci_transfer_pio(host, data);
 			data->dest += data->blocksize;
-
-			if (++block >= data->blocks)
+			if (++block >= data->blocks) {
+				transfer_done = true;
 				break;
+			}
 		}
+
+#ifdef CONFIG_MMC_SDHCI_SDMA
+		if (!transfer_done && (stat & SDHCI_INT_DMA_END)) {
+			sdhci_writel(host, SDHCI_INT_DMA_END, SDHCI_INT_STATUS);
+			start_addr &= ~(SDHCI_DEFAULT_BOUNDARY_SIZE - 1);
+			start_addr += SDHCI_DEFAULT_BOUNDARY_SIZE;
+			sdhci_writel(host, start_addr, SDHCI_DMA_ADDRESS);
+		}
+#endif
 
 		if (timeout-- > 0)
 			udelay(10);
 		else {
-			mmc_error("SDHCI:Transfer data timeout\n", "");
+			mmc_error("SDHCI:Transfer data timeout status(0x%X)\n", sdhci_readl(host, SDHCI_INT_STATUS));
 			return -1;
 		}
 	} while (!(stat & SDHCI_INT_DATA_END));
@@ -291,6 +326,14 @@ static int sdhci_setup_adma(SdhciHost *host, MmcData *data)
 	return 0;
 }
 
+#define DWCMSHC_HOST_CTRL3	0x508
+#define EMMC_DLL_CTRL		0x800
+#define EMMC_DLL_RXCLK		0x804
+#define EMMC_DLL_TXCLK		0x808
+#define EMMC_DLL_STRBIN		0x80C
+#define EMMC_DLL_STATUS0	0x840
+#define EMMC_DLL_STATUS1	0x844
+
 static int sdhci_complete_adma(SdhciHost *host, MmcCommand *cmd, MmcData *data)
 {
 	int retry;
@@ -299,7 +342,7 @@ static int sdhci_complete_adma(SdhciHost *host, MmcCommand *cmd, MmcData *data)
 
 	mask = SDHCI_INT_RESPONSE | SDHCI_INT_ERROR;
 
-	retry = 10000; /* Command should be done in way less than 10 ms. */
+	retry = 100000; /* Command should be done in way less than 10 ms. */
 
 	while (--retry) {
 		stat = sdhci_readl(host, SDHCI_INT_STATUS);
@@ -312,13 +355,18 @@ static int sdhci_complete_adma(SdhciHost *host, MmcCommand *cmd, MmcData *data)
 
 	sdhci_writel(host, SDHCI_INT_RESPONSE, SDHCI_INT_STATUS);
 
+	if  (retry <= 0) {
+		mmc_error("%s: cmd timeout! stat 0x%x, cmd 0x%x\n",
+			  __func__, stat, sdhci_readw(host, SDHCI_COMMAND));
+	}
+
 	if (retry && !(stat & SDHCI_INT_ERROR)) {
 		/* Command OK, let's wait for data transfer completion. */
 		mask = SDHCI_INT_DATA_END |
 		       SDHCI_INT_ERROR | SDHCI_INT_ADMA_ERROR;
 
 		/* Transfer should take 10 seconds tops. */
-		retry = 10 * 1000 * 1000;
+		retry = 5 * 1000 * 1000;
 
 		while (--retry) {
 			stat = sdhci_readl(host, SDHCI_INT_STATUS);
@@ -349,6 +397,8 @@ static int sdhci_complete_adma(SdhciHost *host, MmcCommand *cmd, MmcData *data)
 
 	if (stat & SDHCI_INT_TIMEOUT)
 		return MMC_TIMEOUT;
+	else if (stat & SDHCI_INT_DATA_TIMEOUT)
+		return MMC_DATA_TOUT_ERR;
 	else
 		return MMC_COMM_ERR;
 }
@@ -366,9 +416,7 @@ static int sdhci_send_command(MmcCtrlr *mmc_ctrl, MmcCommand *cmd,
 
 	//mmc_error("cmd%d\n", cmd->cmdidx);
 	/* Wait max 1 s */
-	timeout = 100000;
-
-	sdhci_writel(host, SDHCI_INT_ALL_MASK, SDHCI_INT_STATUS);
+	timeout = 1000;
 	mask = SDHCI_CMD_INHIBIT;
 
 	if (data)
@@ -388,8 +436,10 @@ static int sdhci_send_command(MmcCtrlr *mmc_ctrl, MmcCommand *cmd,
 		}
 
 		timeout--;
-		udelay(100);
+		udelay(1000);
 	}
+
+	sdhci_writel(host, SDHCI_INT_ALL_MASK, SDHCI_INT_STATUS);
 
 	mask = SDHCI_INT_RESPONSE;
 
@@ -430,19 +480,26 @@ static int sdhci_send_command(MmcCtrlr *mmc_ctrl, MmcCommand *cmd,
 						    data->blocksize),
 			     SDHCI_BLOCK_SIZE);
 
+		mode = SDHCI_TRNS_BLK_CNT_EN;
 		if (data->flags == MMC_DATA_READ)
 			mode |= SDHCI_TRNS_READ;
 
 		if (data->blocks > 1)
-			mode |= SDHCI_TRNS_BLK_CNT_EN |
-				SDHCI_TRNS_MULTI | SDHCI_TRNS_ACMD12;
+			mode |= (SDHCI_TRNS_ACMD12 | SDHCI_TRNS_MULTI);
 
 		sdhci_writew(host, data->blocks, SDHCI_BLOCK_COUNT);
 
 		if (host->host_caps & MMC_AUTO_CMD12) {
+#ifdef CONFIG_MMC_SDHCI_SDMA
+			start_addr = (unsigned long)data->dest;
+			if ((start_addr & 0x7) != 0x0) {
+				return MMC_INVALID_ERR;
+			}
+			sdhci_writel(host, start_addr, SDHCI_DMA_ADDRESS);
+#else
 			if (sdhci_setup_adma(host, data))
 				return -1;
-
+#endif
 			mode |= SDHCI_TRNS_DMA;
 		}
 
@@ -454,9 +511,11 @@ static int sdhci_send_command(MmcCtrlr *mmc_ctrl, MmcCommand *cmd,
 	sdhci_writel(host, cmd->cmdarg, SDHCI_ARGUMENT);
 	sdhci_writew(host, SDHCI_MAKE_CMD(cmd->cmdidx, flags), SDHCI_COMMAND);
 
-	//PRINT_E("mmc: cmd:%d, arg:0x%x\n", cmd->cmdidx, cmd->cmdarg);
-	if (data && (host->host_caps & MMC_AUTO_CMD12))
+#ifndef CONFIG_MMC_SDHCI_SDMA
+	if (data && (host->host_caps & MMC_AUTO_CMD12)) {
 		return sdhci_complete_adma(host, cmd, data);
+	}
+#endif
 
 	start = 0;
 
@@ -474,8 +533,8 @@ static int sdhci_send_command(MmcCtrlr *mmc_ctrl, MmcCommand *cmd,
 			if (host->quirks & SDHCI_QUIRK_BROKEN_R1B)
 				return 0;
 			else {
-				mmc_error("SDHCI:Timeout for status update! cmd:0x%x, stat:0x%x, mask:0x%x\n",
-					  sdhci_readw(host, SDHCI_COMMAND), stat, mask);
+				mmc_error("SDHCI:Timeout for status update! cmd%d:0x%x, stat:0x%x, mask:0x%x\n",
+					  cmd->cmdidx, sdhci_readw(host, SDHCI_COMMAND), stat, mask);
 				return MMC_TIMEOUT;
 			}
 		}
@@ -526,10 +585,10 @@ void sdhci_set_uhs_signaling(SdhciHost *host, unsigned int timing)
 	else if ((timing == MMC_TIMING_UHS_SDR12) ||
 		 (timing == MMC_TIMING_LEGACY))
 		ctrl_2 |= SDHCI_CTRL_UHS_SDR12;
-	else if (timing == MMC_TIMING_UHS_SDR25)
-		ctrl_2 |= SDHCI_CTRL_UHS_SDR25;
-	else if ((timing == MMC_TIMING_UHS_SDR50) ||
+	else if ((timing == MMC_TIMING_UHS_SDR25) ||
 		 (timing == MMC_TIMING_MMC_HS)) {
+		ctrl_2 |= SDHCI_CTRL_UHS_SDR25;
+	} else if (timing == MMC_TIMING_UHS_SDR50) {
 		ctrl_2 |= SDHCI_CTRL_UHS_SDR50;
 	} else if ((timing == MMC_TIMING_UHS_DDR50) ||
 		   (timing == MMC_TIMING_MMC_DDR52))
@@ -541,69 +600,6 @@ void sdhci_set_uhs_signaling(SdhciHost *host, unsigned int timing)
 	sdhci_writew(host, ctrl_2 | SDHCI_CTRL_VDD_180 | SDHCI_CTRL_DRV_TYPE_A, SDHCI_HOST_CONTROL2);
 	mmc_debug("host ctrl_2:0x%x\n", sdhci_readw(host, SDHCI_HOST_CONTROL2));
 
-}
-
-#define DWCMSHC_HOST_CTRL3	0x508
-#define EMMC_DLL_CTRL		0x800
-#define EMMC_DLL_RXCLK		0x804
-#define EMMC_DLL_TXCLK		0x808
-#define EMMC_DLL_STRBIN		0x80C
-#define EMMC_DLL_STATUS0	0x840
-#define EMMC_DLL_STATUS1	0x844
-
-int ConfigMMCPHY(SdhciHost *host, unsigned int clock)
-{
-	uint32_t status, tmp;
-	uint32_t ret, timeout;
-
-	PRINT_E("Enable PHY CLK: %d\n", clock);
-	sdhci_writel(host, 0, EMMC_DLL_RXCLK);
-	sdhci_writel(host, 0x0, DWCMSHC_HOST_CTRL3);
-	if (clock < MMC_CLOCK_200MHZ) {
-		sdhci_writel(host, 0, EMMC_DLL_TXCLK);
-		sdhci_writel(host, 0, EMMC_DLL_CTRL);
-		sdhci_writel(host, 0, EMMC_DLL_STRBIN);
-		return 0;
-	}
-
-	/*Reset DLL*/
-	sdhci_writel(host, 0x1 << 1, EMMC_DLL_CTRL);
-	udelay(2);
-	sdhci_writel(host, 0, EMMC_DLL_CTRL);
-	/*Init DLL*/
-	tmp = (5uL << 16) | (2 << 8) | 0x1;
-	sdhci_writel(host, tmp, EMMC_DLL_CTRL);
-
-	/* Wait max 10 ms */
-	timeout = 10000;
-	while (1) {
-		status = sdhci_readl(host, EMMC_DLL_STATUS0);
-		tmp = (status >> 8) & 0x3;
-
-		if (0x1 == tmp) {
-			ret = 0;
-			break;
-		} else if (0x2 == tmp) {
-			ret = -1;
-		}
-
-		if (timeout-- <= 0) {
-			ret = -2;
-		}
-
-		udelay(1);
-	}
-
-	if (ret < 0) {
-		PRINT_E("Emmc DLL Lock fail %d, 0x%x\n", ret, status);
-		return ret;
-	}
-
-	sdhci_writel(host, (1uL << 29) | (1uL << 27), EMMC_DLL_RXCLK);
-	sdhci_writel(host, (1uL << 27) | (1uL << 24) | 0x10, EMMC_DLL_TXCLK);
-	sdhci_writel(host, (1uL << 27) | (1uL << 24) | 0x8, EMMC_DLL_STRBIN);
-
-	return 0;
 }
 
 static int sdhci_set_clock(SdhciHost *host, unsigned int clock)
@@ -686,7 +682,7 @@ static int sdhci_set_clock(SdhciHost *host, unsigned int clock)
 		udelay(1);
 	}
 
-	ConfigMMCPHY(host, clock);
+	ConfigMMCPHY(host, clock, host->timing);
 
 	clk |= SDHCI_CLOCK_CARD_EN;
 	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
@@ -769,14 +765,24 @@ static void sdhci_enhanced_strobe(MmcCtrlr *mmc_ctrlr, u32 enhanced_strobe)
 	u32 vendor;
 	SdhciHost *host = (SdhciHost *)mmc_get_host();
 
+#ifdef DRIVERS_SDHCI_ARASAN
 	vendor = sdhci_readl(host, SDHCI_ARASAN_VENDOR_REGISTER);
-
 	if (enhanced_strobe)
 		vendor |= VENDOR_ENHANCED_STROBE;
 	else
 		vendor &= (~VENDOR_ENHANCED_STROBE);
 
 	sdhci_writel(host, vendor, SDHCI_ARASAN_VENDOR_REGISTER);
+#else
+	vendor = sdhci_readl(host, EMMC_EMMC_CTRL);
+	if (enhanced_strobe)
+		vendor |= BIT(8);
+	else
+		vendor &= ~(BIT(8));
+
+	sdhci_writel(host, vendor, EMMC_EMMC_CTRL);
+	//DRVDelayUs(100);
+#endif
 }
 
 
@@ -824,6 +830,14 @@ static int sdhci_execute_tuning(MmcCtrlr *mmc_ctrlr, u32 opcode)
 	SdhciHost *host = (SdhciHost *)mmc_get_host();
 
 	ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+
+	if (ctrl & SDHCI_CTRL_TUNED_CLK) { //reset tuning
+		ctrl &= ~SDHCI_CTRL_TUNED_CLK;
+		ctrl &= ~SDHCI_CTRL_EXEC_TUNING;
+		sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+		//PRINT_E("reset tuning\n", "");
+	}
+
 	ctrl |= SDHCI_CTRL_EXEC_TUNING;
 	//ctrl |= SDHCI_CTRL_TUNED_CLK;
 
@@ -919,10 +933,12 @@ static void sdhci_set_ios(MmcCtrlr *mmc_ctrlr)
 	if (host->host_caps & MMC_AUTO_CMD12) {
 		ctrl &= ~SDHCI_CTRL_DMA_MASK;
 
+#ifndef CONFIG_MMC_SDHCI_SDMA
 		if (host->dma64)
 			ctrl |= SDHCI_CTRL_ADMA64;
 		else
 			ctrl |= SDHCI_CTRL_ADMA32;
+#endif
 	}
 
 	mmc_debug("host ctrl:0x%x\n", ctrl);
@@ -1015,7 +1031,8 @@ static int sdhci_pre_init(SdhciHost *host)
 				       MMC_MODE_4BIT | MMC_MODE_HC;
 	else
 		host->mmc_ctrlr.caps = MMC_MODE_HS | MMC_MODE_HS_52MHz |
-				       MMC_MODE_4BIT | MMC_MODE_HC | MMC_MODE_HS_200MHz;
+				       MMC_MODE_4BIT | MMC_MODE_HC | MMC_MODE_HS_200MHz |
+				       MMC_MODE_HS_400MHz | MMC_MODE_HS_400MHz_ES;
 
 	if (host->quirks & SDHCI_QUIRK_EMMC_1V8_POWER)
 		host->mmc_ctrlr.caps |= MMC_MODE_1V8_VDD;

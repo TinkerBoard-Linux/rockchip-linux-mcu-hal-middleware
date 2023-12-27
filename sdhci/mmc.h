@@ -1,28 +1,7 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
- * Copyright 2008,2010 Freescale Semiconductor, Inc
- * Andy Fleming
+ * Copyright (c) 2023 Rockchip Electronics Co., Ltd.
  *
- * Copyright 2013 Google Inc.  All rights reserved.
- *
- * Based (loosely) on the Linux code
- *
- * See file CREDITS for list of people who contributed to this
- * project.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation; either version 2 of
- * the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
- * MA 02111-1307 USA
  */
 
 #ifndef __SDHCI_MMC_H__
@@ -51,6 +30,7 @@
 #define MMC_MODE_HS_52MHz	0x010
 #define MMC_MODE_HS_200MHz	0x020
 #define MMC_MODE_HS_400MHz	0x040
+#define MMC_MODE_HS_400MHz_ES	0x100
 
 
 #define MMC_MODE_1V8_VDD	0x080
@@ -73,6 +53,7 @@
 #define MMC_TIMEOUT		-19
 #define MMC_IN_PROGRESS		-20 /* operation is in progress */
 #define MMC_INVALID_ERR		-21 /* A catch all case. */
+#define MMC_DATA_TOUT_ERR   -22
 
 #define MMC_CMD_GO_IDLE_STATE		0
 #define MMC_CMD_SEND_OP_COND		1
@@ -251,12 +232,13 @@
 #define MMC_RSP_R7	(MMC_RSP_PRESENT|MMC_RSP_CRC|MMC_RSP_OPCODE)
 
 #define MMC_INIT_TIMEOUT_US	(1000 * 1000)
-#define MMC_IO_RETRIES	(1000)
+#define MMC_IO_RETRIES	(10000)
 #define MMC_CLOCK_20MHZ (20000000)
 #define MMC_CLOCK_25MHZ (25000000)
 #define MMC_CLOCK_26MHZ (26000000)
 #define MMC_CLOCK_50MHZ (50000000)
 #define MMC_CLOCK_52MHZ (52000000)
+#define MMC_CLOCK_100MHZ (100000000)
 #define MMC_CLOCK_200MHZ (200000000)
 #define MMC_CLOCK_DEFAULT_MHZ	(MMC_CLOCK_20MHZ)
 
@@ -350,9 +332,11 @@ typedef struct MmcMedia {
 	uint32_t scr[2];
 	uint32_t csd[4];
 	uint32_t cid[4];
+	uint8 ext_csd[512];
 	unsigned int raw_card_type;
 	unsigned int mmc_avail_type; /* supported device type by both host and card */
-
+	unsigned int avail_driver_type; /* supported driver type by card */
+	unsigned int sel_drv_type;  /* select driver type by host */
 	uint32_t op_cond_response; // The response byte from the last op_cond
 } MmcMedia;
 
