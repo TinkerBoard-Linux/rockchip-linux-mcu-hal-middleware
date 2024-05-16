@@ -417,25 +417,31 @@ void console_uart_isr(uint32_t irq, void *args)
 {
     struct console_dev *console = &g_console;
     struct UART_REG *pReg = console->uart_dev->pReg;
-    uint8_t data = 0;
+    uint8_t skip_log = 0, data = 0;
+    uint32_t iir = HAL_UART_GetIrqID(pReg);
 
-    if (HAL_UART_GetIrqID(pReg) != UART_IIR_RX_TIMEOUT) {
+    if (iir != UART_IIR_RX_TIMEOUT &&
+        iir != UART_IIR_RDI) {
         return;
     }
 
-    HAL_UART_SerialIn(pReg, &data, 1);
-    if (console->flags & CONSOLE_FLAG_CMD_LOCK) {
-        printf("wait for process command\n");
+    while (HAL_UART_GetUsr(pReg) & UART_USR_RX_FIFO_NOT_EMPTY) {
+        HAL_UART_SerialIn(pReg, &data, 1);
 
-        return;
+        if (console->flags & CONSOLE_FLAG_CMD_LOCK) {
+            if (!skip_log) {
+                printf("wait for process command\n");
+                skip_log = 1;
+            }
+            continue;
+        }
+
+        if (console_spec_char(console, data))
+            continue;
+
+        console_putchar(console, data);
+        console_insert_char(console, data);
     }
-
-    if (console_spec_char(console, data)) {
-        return;
-    }
-
-    console_putchar(console, data);
-    console_insert_char(console, data);
 }
 
 uint8_t *console_get_paramter(uint8_t *line, int *len, uint8_t * *next)
