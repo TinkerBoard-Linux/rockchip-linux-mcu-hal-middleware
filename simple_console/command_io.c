@@ -56,9 +56,9 @@ static void dump_reg(uint32_t addr, int num, int unit)
         printf("0x%08lx:  ", addr);
         for (i = 0; i < 4 && num > 0; i++) {
             data = *(volatile uint32_t *)(addr + (i << 2));
-            addr += 4;
             dump_one_reg(data, unit, &num);
         }
+        addr += 16;
         printf("\n");
     }
 }
