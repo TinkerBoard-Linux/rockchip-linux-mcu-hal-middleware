@@ -23,6 +23,7 @@ Original Author: Shay Gal-on
 #define CORE_PORTME_H
 
 #include "coremark_config.h"
+#include <stdio.h>
 
 /************************/
 /* Data types and settings */
